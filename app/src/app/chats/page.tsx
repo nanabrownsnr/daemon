@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import CreateChatForm from "./create-chat-form";
+import LogoutButton from "./logout-button";
 
 export default async function ChatsPage() {
   const supabase = await createClient();
@@ -48,6 +49,7 @@ export default async function ChatsPage() {
           <h1 className="text-xl font-semibold">
             dæmon — {person.display_name}
           </h1>
+          <LogoutButton />
         </div>
 
         <CreateChatForm personId={person.id} />

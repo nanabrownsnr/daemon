@@ -11,6 +11,7 @@ type Draft = {
   sender_type: "human" | "agent";
   topic_tag: string | null;
   question_type: string | null;
+  trigger_message_id: string | null;
 };
 
 type Props = {
@@ -32,7 +33,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
     if (!agentBindingId) return;
     supabase
       .from("private_thread_message")
-      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type")
+      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id")
       .eq("chat_id", chatId)
       .eq("person_id", personId)
       .eq("sender_type", "agent")
@@ -92,6 +93,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
       person_id: personId,
       agent_binding_id: agentBindingId,
       private_thread_message_id: draft.id,
+      message_id: draft.trigger_message_id,
       signal,
       topic_tag: draft.topic_tag,
       question_type: draft.question_type,
