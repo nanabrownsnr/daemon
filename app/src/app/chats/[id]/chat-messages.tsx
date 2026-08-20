@@ -158,9 +158,7 @@ export default function ChatMessages({
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-2 chat-scroll">
         {messages.map((m) => {
           const mine = isMyMessage(m);
-          const senderLabel = m.sender_type === "agent"
-            ? `${personNames[m.sender_person_id] ?? "Unknown"} (agent)`
-            : personNames[m.sender_person_id] ?? "Unknown";
+          const senderLabel = personNames[m.sender_person_id] ?? "Unknown";
 
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -177,7 +175,8 @@ export default function ChatMessages({
                 </div>
                 {m.sender_type === "agent" && (
                   <span className="text-xs text-neutral-600 px-1 italic">
-                    Sent by {personNames[m.sender_person_id] ?? "Unknown"}'s dæmon
+                    sent by agent 
+                    {/* dæmon */}
                   </span>
                 )}
               </div>

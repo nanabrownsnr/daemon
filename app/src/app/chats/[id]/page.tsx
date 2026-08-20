@@ -82,19 +82,7 @@ export default async function ChatPage({
         }
         sidebar={
           <div className="flex-1 overflow-y-auto sidebar-scroll">
-            {/* Agents */}
-            <div className="p-4 border-b border-neutral-800">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-neutral-500 uppercase tracking-wide">Agents</p>
-                <AgentModal chatId={chatId} personId={myPerson.id} />
-              </div>
-              <AgentBindings
-                chatId={chatId}
-                personId={myPerson.id}
-                personNames={personNames}
-              />
-            </div>
-
+            
             {/* Members */}
             <div className="p-4 border-b border-neutral-800">
               <p className="text-xs text-neutral-500 uppercase tracking-wide mb-3">Members</p>
@@ -109,6 +97,20 @@ export default async function ChatPage({
                   </li>
                 ))}
               </ul>
+            </div>            
+            
+            
+            {/* Agents */}
+            <div className="p-4 border-b border-neutral-800">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-neutral-500 uppercase tracking-wide">Agents</p>
+                <AgentModal chatId={chatId} personId={myPerson.id} />
+              </div>
+              <AgentBindings
+                chatId={chatId}
+                personId={myPerson.id}
+                personNames={personNames}
+              />
             </div>
 
             {/* Agent drafts */}

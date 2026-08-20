@@ -46,7 +46,7 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100">
       <div className="w-full max-w-sm space-y-6 p-8">
-        <h1 className="text-2xl font-semibold">dæmon</h1>
+        <h1 className="text-2xl font-semibold">groupwork</h1>
 
         <div className="flex gap-4 text-sm">
         <button

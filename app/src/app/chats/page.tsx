@@ -47,7 +47,7 @@ export default async function ChatsPage() {
       <div className="max-w-lg mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">
-            dæmon — {person.display_name}
+            groupwork — {person.display_name}
           </h1>
           <LogoutButton />
         </div>
