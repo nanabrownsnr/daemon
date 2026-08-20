@@ -155,6 +155,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
         agent_binding_id: agentBindingId,
         mode: "advice",
         body: editBody,
+        was_edited: true,
       })
       .select()
       .single();
@@ -206,7 +207,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
   return (
     <div className="border-t border-neutral-800 pt-4 space-y-3">
       <h2 className="text-xs text-neutral-500 uppercase tracking-wide flex items-center gap-2">
-        Agent workspace
+        Agent drafts
         {drafts.length > 0 && (
           <span className="bg-neutral-700 text-neutral-200 text-xs px-1.5 py-0.5 rounded-full">
             {drafts.length}
@@ -216,7 +217,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
 
       {drafts.length === 0 && (
         <p className="text-neutral-600 text-xs">
-          No pending drafts. Work will appear here for review.
+          No pending drafts. Mentions of you will appear here for review.
         </p>
       )}
 

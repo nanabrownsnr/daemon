@@ -9,6 +9,7 @@ type Message = {
   sender_type: "human" | "agent";
   body: string;
   created_at: string;
+  was_edited?: boolean;
 };
 
 type Person = {
@@ -47,7 +48,7 @@ export default function ChatMessages({
   useEffect(() => {
     supabase
       .from("message")
-      .select("id, sender_person_id, sender_type, body, created_at")
+      .select("id, sender_person_id, sender_type, body, created_at, was_edited")
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
       .then(({ data }) => setMessages(data ?? []));
@@ -158,7 +159,9 @@ export default function ChatMessages({
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-2 chat-scroll">
         {messages.map((m) => {
           const mine = isMyMessage(m);
-          const senderLabel = personNames[m.sender_person_id] ?? "Unknown";
+          const senderLabel = m.sender_type === "agent"
+            ? `${personNames[m.sender_person_id] ?? "Unknown"} (agent)`
+            : personNames[m.sender_person_id] ?? "Unknown";
 
           return (
             <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
@@ -173,10 +176,9 @@ export default function ChatMessages({
                 }`}>
                   {m.body}
                 </div>
-                {m.sender_type === "agent" && (
+                {m.sender_type === "agent" && !m.was_edited && (
                   <span className="text-xs text-neutral-600 px-1 italic">
-                    sent by agent 
-                    {/* dæmon */}
+                    Sent by {personNames[m.sender_person_id] ?? "Unknown"}'s agent
                   </span>
                 )}
               </div>
