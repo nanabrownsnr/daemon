@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function AuthPage() {
-  const [mode, setMode] = useState<"signup" | "login">("signup");
+  const [mode, setMode] = useState<"signup" | "login">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -49,18 +49,19 @@ export default function AuthPage() {
         <h1 className="text-2xl font-semibold">dæmon</h1>
 
         <div className="flex gap-4 text-sm">
+        <button
+            className={mode === "login" ? "font-semibold" : "text-neutral-500"}
+            onClick={() => setMode("login")}
+          >
+            Log in
+          </button>
           <button
             className={mode === "signup" ? "font-semibold" : "text-neutral-500"}
             onClick={() => setMode("signup")}
           >
             Sign up
           </button>
-          <button
-            className={mode === "login" ? "font-semibold" : "text-neutral-500"}
-            onClick={() => setMode("login")}
-          >
-            Log in
-          </button>
+
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
