@@ -45,3 +45,8 @@ installed and authenticated on the machine running the connector.
 
 The live Supabase project currently owns the database schema and policies; this
 repository does not maintain local migration files.
+
+## Regression tests
+
+See `docs/regression-tests.md` for the fast connector suite, staging browser
+suite, required test accounts, and the complete pre-production gate.

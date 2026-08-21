@@ -56,9 +56,15 @@ export default function ChatCardAction({
     <button
       onClick={handleLeave}
       disabled={loading}
-      className="text-xs text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
+      title="Leave chat"
+      aria-label="Leave chat"
+      className="text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
     >
-      Leave
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M10 17l5-5-5-5" />
+        <path d="M15 12H3" />
+        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      </svg>
     </button>
   );
 }

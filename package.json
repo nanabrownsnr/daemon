@@ -1,0 +1,8 @@
+{
+  "name": "daemon",
+  "private": true,
+  "scripts": {
+    "test:regression": "npm --prefix connector test && npm --prefix app run test:e2e",
+    "check:prod": "npm run test:regression && npm --prefix app run lint && npm --prefix app run build"
+  }
+}
