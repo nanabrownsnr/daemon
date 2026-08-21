@@ -106,11 +106,9 @@ test.afterAll(async () => {
 
 test("auth, person sync, chat creation, and listing", async ({ page }) => {
   await login(page, env.REGRESSION_USER_A_EMAIL, env.REGRESSION_USER_A_PASSWORD);
-  await expect(page.getByRole("heading", {
-    name: `groupwork — ${env.REGRESSION_USER_A_NAME}`,
-    exact: true,
-  })).toBeVisible();
-  await page.getByPlaceholder("New chat name").fill(chatName);
+  await expect(page.getByRole("heading", { name: "Your conversations", exact: true })).toBeVisible();
+  await expect(page.getByText(`Signed in as ${env.REGRESSION_USER_A_NAME}`, { exact: true })).toBeVisible();
+  await page.getByPlaceholder("e.g. Product launch").fill(chatName);
   await page.getByRole("button", { name: "Create" }).click();
   const card = page.getByRole("link", { name: chatName });
   await expect(card).toBeVisible();

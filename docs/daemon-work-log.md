@@ -39,6 +39,9 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
 | Connector regression tests | Eight fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude invocation parsing. Keep these running during MVP development. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
+| Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
+| Auth/session hardening | Next.js 16 `proxy.ts` refreshes Supabase sessions and protects `/chats`; authenticated users are redirected away from `/auth`. Signup normalizes input and handles both immediate sessions and future email-confirmation mode. |
+| Chat-list cleanup | Clearer page hierarchy, contained create form, consistent conversation cards/actions, responsive spacing, empty state, and typed relation mapping. |
 
 ---
 
@@ -146,9 +149,10 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
   'act'`, with a regression assertion covering the exact stored value. A
   subsequent live mention confirmed `Judgment decided: act` followed by a
   successful direct chat post. Automatic delivery added no positive judgment
-  event, so the self-reinforcement safeguard also held. Owner editing and the
-  `corrected_after_send` demotion path are now implemented; live demotion UAT
-  remains to be completed.
+  event, so the self-reinforcement safeguard also held. Editing the sent agent
+  response recorded `corrected_after_send`; the next API mention was correctly
+  routed back to Advice. Promotion, Act delivery, non-self-reinforcement, and
+  topic-specific demotion are all confirmed live.
 - **Plan, not yet executed:** once P2 (rule engine) is built and stable, do
   a full data wipe and re-test with clean, deliberate test scenarios rather
   than accumulated ad-hoc testing data. Don't do this now — current messy
@@ -160,6 +164,12 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - **Soft-delete vs hard-delete for persons** — judgment history is a long-term asset, shouldn't be casually destroyable
 - **Shared session vs dedicated session for Claude Code** — dedicated session (current) avoids race conditions but doesn't inherit interactive reasoning. Empirical concurrency test (real Anthropic auth) still not run. Low priority until dedicated session is proven insufficient.
 - **Agent-to-agent loop prevention** — needed once any auto-triggering beyond explicit mention exists
+- **Topic continuity beyond keywords** — current deterministic classifier is
+  intentionally lightweight but misses pronoun-heavy follow-ups. Do not add a
+  local classification model yet: it would increase connector installation
+  size, resource usage, latency, and operational complexity before real usage
+  proves it necessary. First try conservative continuity rules; revisit a small
+  local or hosted model only with measured misclassification data.
 
 ## Schema Reality-Check Log
 

@@ -10,34 +10,55 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     setError(null);
+    setStatus(null);
     setLoading(true);
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     if (mode === "signup") {
-      const { error } = await supabase.auth.signUp({
-        email,
+      const normalizedDisplayName = displayName.trim();
+      if (!normalizedDisplayName) {
+        setError("Display name is required.");
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
         password,
         options: {
           // this is what fixes the email-fallback issue we logged earlier —
           // the auth->person trigger reads this metadata directly
-          data: { display_name: displayName },
+          data: { display_name: normalizedDisplayName },
         },
       });
       if (error) setError(error.message);
-      else router.push("/chats");
+      else if (data.session) {
+        router.replace("/chats");
+        router.refresh();
+      } else {
+        setStatus("Account created. Check your email to confirm your address, then log in.");
+        setMode("login");
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       });
       if (error) setError(error.message);
-      else router.push("/chats");
+      else {
+        router.replace("/chats");
+        router.refresh();
+      }
     }
 
     setLoading(false);
@@ -49,15 +70,17 @@ export default function AuthPage() {
         <h1 className="text-2xl font-semibold">groupwork</h1>
 
         <div className="flex gap-4 text-sm">
-        <button
+          <button
+            type="button"
             className={mode === "login" ? "font-semibold" : "text-neutral-500"}
-            onClick={() => setMode("login")}
+            onClick={() => { setMode("login"); setError(null); setStatus(null); }}
           >
             Log in
           </button>
           <button
+            type="button"
             className={mode === "signup" ? "font-semibold" : "text-neutral-500"}
-            onClick={() => setMode("signup")}
+            onClick={() => { setMode("signup"); setError(null); setStatus(null); }}
           >
             Sign up
           </button>
@@ -72,6 +95,8 @@ export default function AuthPage() {
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               required
+              maxLength={80}
+              autoComplete="name"
               className="w-full rounded bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm"
             />
           )}
@@ -81,6 +106,7 @@ export default function AuthPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
             className="w-full rounded bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm"
           />
           <input
@@ -89,11 +115,13 @@ export default function AuthPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={6}
+            minLength={mode === "signup" ? 8 : 6}
+            autoComplete={mode === "signup" ? "new-password" : "current-password"}
             className="w-full rounded bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm"
           />
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
+          {status && <p className="text-green-400 text-sm">{status}</p>}
 
           <button
             type="submit"

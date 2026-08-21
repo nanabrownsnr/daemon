@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import InviteModal from "./invite-modal";
 import AgentModal from "./agent-modal";
@@ -48,19 +49,20 @@ export default async function ChatPage({
     .from("agent_binding").select("id")
     .eq("chat_id", chatId).eq("person_id", myPerson.id).single();
 
-  const personNames: Record<string, string> = {};
-  (members ?? []).filter((m: any) => m.person)
-    .forEach((m: any) => { personNames[m.person.id] = m.person.display_name; });
-
-  const chatMembers = (members ?? []).filter((m: any) => m.person)
-    .map((m: any) => ({ id: m.person.id, display_name: m.person.display_name }));
+  const chatMembers = (members ?? []).flatMap((membership) => {
+    const related = Array.isArray(membership.person) ? membership.person[0] : membership.person;
+    return related ? [{ id: related.id, display_name: related.display_name }] : [];
+  });
+  const personNames = Object.fromEntries(
+    chatMembers.map((member) => [member.id, member.display_name])
+  );
 
   return (
     <div className="h-screen bg-neutral-950 text-neutral-100 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 shrink-0">
         <div className="flex items-center gap-3">
-          <a href="/chats" className="text-neutral-500 hover:text-neutral-300 text-sm">←</a>
+          <Link href="/chats" className="text-neutral-500 hover:text-neutral-300 text-sm">←</Link>
           <span className="font-medium">{chat.name}</span>
         </div>
         <div className="flex items-center gap-3">
@@ -94,7 +96,6 @@ export default async function ChatPage({
               <AgentBindings
                 chatId={chatId}
                 personId={myPerson.id}
-                personNames={personNames}
               />
             </div>
 

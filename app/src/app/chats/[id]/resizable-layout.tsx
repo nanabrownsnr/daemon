@@ -16,6 +16,9 @@ export default function ResizableLayout({
   // restore saved width on mount
   useEffect(() => {
     const saved = localStorage.getItem("daemon-sidebar-width");
+    // Restoring a browser preference after hydration intentionally requires a
+    // one-time state update; the server cannot read localStorage.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (saved) setSidebarWidth(Number(saved));
   }, []);
 

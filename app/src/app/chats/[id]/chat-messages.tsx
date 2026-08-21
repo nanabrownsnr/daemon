@@ -78,7 +78,7 @@ export default function ChatMessages({
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
       .then(({ data }) => setMessages(data ?? []));
-  }, [chatId]);
+  }, [chatId, supabase]);
 
   useEffect(() => {
     const channel = supabase
@@ -95,14 +95,11 @@ export default function ChatMessages({
       ))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [chatId]);
+  }, [chatId, supabase]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  // reset highlighted index when mention list changes
-  useEffect(() => { setHighlightedIndex(0); }, [mentionQuery]);
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
@@ -115,6 +112,7 @@ export default function ChatMessages({
     if (atIndex !== -1) {
       const query = textUpToCursor.slice(atIndex + 1);
       if (!query.includes(" ")) {
+        setHighlightedIndex(0);
         setMentionQuery(query);
         setMentionStartIndex(atIndex);
         return;
@@ -195,17 +193,13 @@ export default function ChatMessages({
 
     setSavingEdit(true);
     setEditError(null);
-    const wasAlreadyEdited = message.was_edited === true;
     const editDistance = wordEditDistance(message.body, body);
 
-    const { data: updated, error: updateError } = await supabase
-      .from("message")
-      .update({ body, was_edited: true })
-      .eq("id", message.id)
-      .eq("sender_person_id", personId)
-      .eq("sender_type", "agent")
-      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag")
-      .single();
+    const { data: updated, error: updateError } = await supabase.rpc("edit_agent_message", {
+      p_message_id: message.id,
+      p_body: body,
+      p_edit_distance: editDistance,
+    });
 
     if (updateError || !updated) {
       setEditError(updateError?.message ?? "Could not edit this message.");
@@ -213,26 +207,8 @@ export default function ChatMessages({
       return;
     }
 
-    if (!wasAlreadyEdited) {
-      const { error: eventError } = await supabase.from("judgment_event").insert({
-        person_id: personId,
-        agent_binding_id: message.agent_binding_id,
-        message_id: message.id,
-        signal: "corrected_after_send",
-        topic_tag: message.topic_tag ?? "general",
-        relationship_category: "internal_team",
-        edit_distance: editDistance,
-      });
-
-      if (eventError) {
-        setEditError(`Message updated, but judgment feedback failed: ${eventError.message}`);
-        setMessages((prev) => prev.map((item) => item.id === updated.id ? updated as Message : item));
-        setSavingEdit(false);
-        return;
-      }
-    }
-
-    setMessages((prev) => prev.map((item) => item.id === updated.id ? updated as Message : item));
+    const updatedMessage = updated as Message;
+    setMessages((prev) => prev.map((item) => item.id === updatedMessage.id ? updatedMessage : item));
     setEditingMessageId(null);
     setEditedBody("");
     setSavingEdit(false);

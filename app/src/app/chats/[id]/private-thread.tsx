@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Draft = {
@@ -28,6 +28,16 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
   const viewedAtRef = useRef<Record<string, string>>({});
   const supabase = createClient();
 
+  const markViewed = useCallback(async (draftId: string) => {
+    const now = new Date().toISOString();
+    viewedAtRef.current[draftId] = now;
+    await supabase
+      .from("private_thread_message")
+      .update({ first_viewed_at: now })
+      .eq("id", draftId)
+      .is("first_viewed_at", null);
+  }, [supabase]);
+
   // load existing drafts
   useEffect(() => {
     if (!agentBindingId) return;
@@ -46,7 +56,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
           if (!d.first_viewed_at) markViewed(d.id);
         });
       });
-  }, [chatId, personId, agentBindingId]);
+  }, [chatId, personId, agentBindingId, markViewed, supabase]);
 
   // realtime: new drafts from agent
   useEffect(() => {
@@ -66,27 +76,17 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [chatId, personId, agentBindingId]);
-
-  async function markViewed(draftId: string) {
-    const now = new Date().toISOString();
-    viewedAtRef.current[draftId] = now;
-    await supabase
-      .from("private_thread_message")
-      .update({ first_viewed_at: now })
-      .eq("id", draftId)
-      .is("first_viewed_at", null); // only set once
-  }
+  }, [chatId, personId, agentBindingId, markViewed, supabase]);
 
   async function recordEvent(
     draft: Draft,
     signal: string,
-    extraFields: Record<string, any> = {}
+    extraFields: Record<string, string | number | boolean | null> = {}
   ) {
     if (!agentBindingId) return;
     const firstViewed = viewedAtRef.current[draft.id];
     const responseTimeMs = firstViewed
-      ? Date.now() - new Date(firstViewed).getTime()
+      ? new Date().getTime() - new Date(firstViewed).getTime()
       : null;
 
     await supabase.from("judgment_event").insert({
@@ -279,7 +279,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
                     disabled={loading === draft.id}
                     className="text-xs px-2 py-1 rounded bg-neutral-800 text-neutral-300 disabled:opacity-50"
                   >
-                    I'll handle this
+                    I&apos;ll handle this
                   </button>
                   <button
                     onClick={() => handleCancel(draft)}

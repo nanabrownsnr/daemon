@@ -14,10 +14,9 @@ type AgentBinding = {
 type Props = {
   chatId: string;
   personId: string;
-  personNames: Record<string, string>;
 };
 
-export default function AgentBindings({ chatId, personId, personNames }: Props) {
+export default function AgentBindings({ chatId, personId }: Props) {
   const [bindings, setBindings] = useState<AgentBinding[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
   const [onlineBindings, setOnlineBindings] = useState<Set<string>>(new Set());
@@ -29,7 +28,7 @@ export default function AgentBindings({ chatId, personId, personNames }: Props) 
       .select("id, person_id, agent_type, agent_label, mode")
       .eq("chat_id", chatId)
       .then(({ data }) => setBindings(data ?? []));
-  }, [chatId]);
+  }, [chatId, supabase]);
 
   // presence — subscribe to each binding's presence channel to know if
   // its connector is currently running
@@ -50,7 +49,7 @@ export default function AgentBindings({ chatId, personId, personNames }: Props) 
       return channel;
     });
     return () => { channels.forEach((c) => supabase.removeChannel(c)); };
-  }, [bindings.map((b) => b.id).join(",")]);
+  }, [bindings, supabase]);
 
   // live updates — picks up new bindings registered while on the page
   useEffect(() => {
@@ -72,7 +71,7 @@ export default function AgentBindings({ chatId, personId, personNames }: Props) 
       }, (payload) => setBindings((prev) => prev.filter((b) => b.id !== payload.old.id)))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [chatId]);
+  }, [chatId, supabase]);
 
   async function handleSetMode(binding: AgentBinding, newMode: string) {
     if (binding.mode === newMode) return;
