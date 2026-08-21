@@ -158,29 +158,43 @@ export function classifyQuestion(text) {
 // ============================================================
 
 export async function buildPrompt(supabase, triggerMessage, chatId, personDisplayName) {
+  // Fetch recent group chat messages for immediate context
   const { data: recentMessages } = await supabase
     .from("message")
-    .select("body, sender_person_id, sender_type, created_at")
+    .select("body, sender_person_id, sender_type, created_at, sender:sender_person_id(display_name), agent:agent_binding_id(agent_label)")
     .eq("chat_id", chatId)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(15);
 
   const contextLines = (recentMessages ?? [])
     .reverse()
-    .map((m) => `[${m.sender_type === "agent" ? "agent" : "human"}]: ${m.body}`)
+    .map((m) => {
+      const senderName = m.sender?.display_name ?? "Unknown team member";
+      if (m.sender_type === "agent") {
+        const agentLabel = m.agent?.agent_label;
+        return `[${agentLabel ? `${agentLabel}, ${senderName}'s agent` : `${senderName}'s agent`}]: ${m.body}`;
+      }
+      return `[${senderName}]: ${m.body}`;
+    })
     .join("\n");
 
-  return `You are answering on behalf of ${personDisplayName}, a developer working on this project.
+  const triggerSenderName = triggerMessage.sender?.display_name ?? "A team member";
 
-Recent conversation context:
+  return `System Directive: You are the technical counterpart and proxy for ${personDisplayName} within an engineering team group chat. Your job is to field questions, extract insights from the local project files in your directory, and speak directly with the authority and voice of ${personDisplayName}.
+
+Recent Group Chat Context:
 ${contextLines}
 
-${personDisplayName} has been directly addressed with the following:
+Target Message Addressed to You:
+From: ${triggerSenderName}
 "${triggerMessage.body}"
 
-Answer based on the current state of this repository. Be concise and direct.
-If you are not confident, say so clearly rather than guessing.
-Do not mention that you are an AI or that you are acting on someone's behalf.`;
+Instructions:
+1. Ground your answer strictly in the current files and documents within your directory workspace and the ongoing conversation history above. Do not lose sight of what teammates just discussed.
+2. Adopt a direct, peer-to-peer engineering tone. You are part of the core team—be concise, technical, and pragmatic.
+3. Never break character. Do not mention that you are an AI, a language model, or acting on someone's behalf.
+4. Do not invent decisions, commitments, deadlines, approvals, personal opinions, or completed actions that are not evidenced by the project files or conversation. If the answer requires ${personDisplayName}'s judgment or authorization, say that ${personDisplayName} needs to confirm.
+5. If your local files or conversation history lack the answer, state clearly what is missing rather than guessing or padding the response.`;
 }
 
 // ============================================================
@@ -219,8 +233,9 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
       sender_person_id: personId,
       sender_type: "agent",
       agent_binding_id: binding.id,
-      mode: "auto",
+      mode: "act",
       body: responseBody,
+      topic_tag: triggerClassification?.topicTag ?? "general",
     });
     if (error) console.error("[daemon] Failed to post auto response:", error.message);
     else console.log("[daemon] Act response posted to chat.");
@@ -252,7 +267,7 @@ async function handleMention(supabase, mention, person, bindingsByChat, forceAdv
   // fetch the triggering message
   const { data: msg } = await supabase
     .from("message")
-    .select("id, body, sender_person_id, chat_id")
+    .select("id, body, sender_person_id, chat_id, sender:sender_person_id(display_name)")
     .eq("id", mention.message_id)
     .single();
 

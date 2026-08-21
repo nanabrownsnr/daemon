@@ -10,12 +10,34 @@ type Message = {
   body: string;
   created_at: string;
   was_edited?: boolean;
+  agent_binding_id: string | null;
+  topic_tag: string | null;
 };
 
 type Person = {
   id: string;
   display_name: string;
 };
+
+function wordEditDistance(original: string, edited: string) {
+  const a = original.trim().split(/\s+/).filter(Boolean);
+  const b = edited.trim().split(/\s+/).filter(Boolean);
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    for (let j = 0; j < current.length; j += 1) previous[j] = current[j];
+  }
+
+  return previous[b.length];
+}
 
 export default function ChatMessages({
   chatId,
@@ -34,6 +56,10 @@ export default function ChatMessages({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editedBody, setEditedBody] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const filteredMembers = mentionQuery !== null
     ? chatMembers.filter((m) =>
@@ -48,7 +74,7 @@ export default function ChatMessages({
   useEffect(() => {
     supabase
       .from("message")
-      .select("id, sender_person_id, sender_type, body, created_at, was_edited")
+      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag")
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
       .then(({ data }) => setMessages(data ?? []));
@@ -61,6 +87,12 @@ export default function ChatMessages({
         event: "INSERT", schema: "public", table: "message",
         filter: `chat_id=eq.${chatId}`,
       }, (payload) => setMessages((prev) => [...prev, payload.new as Message]))
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "message",
+        filter: `chat_id=eq.${chatId}`,
+      }, (payload) => setMessages((prev) =>
+        prev.map((message) => message.id === payload.new.id ? payload.new as Message : message)
+      ))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [chatId]);
@@ -151,6 +183,61 @@ export default function ChatMessages({
     }
   }
 
+  function beginEdit(message: Message) {
+    setEditingMessageId(message.id);
+    setEditedBody(message.body);
+    setEditError(null);
+  }
+
+  async function saveEdit(message: Message) {
+    const body = editedBody.trim();
+    if (!body || body === message.body || !message.agent_binding_id) return;
+
+    setSavingEdit(true);
+    setEditError(null);
+    const wasAlreadyEdited = message.was_edited === true;
+    const editDistance = wordEditDistance(message.body, body);
+
+    const { data: updated, error: updateError } = await supabase
+      .from("message")
+      .update({ body, was_edited: true })
+      .eq("id", message.id)
+      .eq("sender_person_id", personId)
+      .eq("sender_type", "agent")
+      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag")
+      .single();
+
+    if (updateError || !updated) {
+      setEditError(updateError?.message ?? "Could not edit this message.");
+      setSavingEdit(false);
+      return;
+    }
+
+    if (!wasAlreadyEdited) {
+      const { error: eventError } = await supabase.from("judgment_event").insert({
+        person_id: personId,
+        agent_binding_id: message.agent_binding_id,
+        message_id: message.id,
+        signal: "corrected_after_send",
+        topic_tag: message.topic_tag ?? "general",
+        relationship_category: "internal_team",
+        edit_distance: editDistance,
+      });
+
+      if (eventError) {
+        setEditError(`Message updated, but judgment feedback failed: ${eventError.message}`);
+        setMessages((prev) => prev.map((item) => item.id === updated.id ? updated as Message : item));
+        setSavingEdit(false);
+        return;
+      }
+    }
+
+    setMessages((prev) => prev.map((item) => item.id === updated.id ? updated as Message : item));
+    setEditingMessageId(null);
+    setEditedBody("");
+    setSavingEdit(false);
+  }
+
   const isMyMessage = (m: Message) => m.sender_person_id === personId;
 
   return (
@@ -174,12 +261,59 @@ export default function ChatMessages({
                     ? "bg-neutral-100 text-neutral-900 rounded-br-sm"
                     : "bg-neutral-800 text-neutral-100 rounded-bl-sm"
                 }`}>
-                  {m.body}
+                  {editingMessageId === m.id ? (
+                    <div className="space-y-2 min-w-64">
+                      <textarea
+                        value={editedBody}
+                        onChange={(event) => setEditedBody(event.target.value)}
+                        rows={4}
+                        autoFocus
+                        className="w-full resize-y rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900 focus:outline-none focus:border-neutral-500"
+                      />
+                      {editError && <p className="text-xs text-red-600">{editError}</p>}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setEditingMessageId(null); setEditedBody(""); setEditError(null); }}
+                          disabled={savingEdit}
+                          className="text-xs text-neutral-500"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => saveEdit(m)}
+                          disabled={savingEdit || !editedBody.trim() || editedBody.trim() === m.body}
+                          className="rounded bg-neutral-900 px-2 py-1 text-xs text-white disabled:opacity-50"
+                        >
+                          {savingEdit ? "Saving…" : "Save edit"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : m.body}
                 </div>
-                {m.sender_type === "agent" && !m.was_edited && (
-                  <span className="text-xs text-neutral-600 px-1 italic">
-                    Sent by {personNames[m.sender_person_id] ?? "Unknown"}'s agent
-                  </span>
+                {m.sender_type === "agent" && (
+                  <div className="flex items-center gap-1 px-1 text-neutral-600">
+                    <span className="text-xs italic">
+                      {m.was_edited
+                        ? `Edited by ${personNames[m.sender_person_id] ?? "Unknown"}`
+                        : `Sent by ${personNames[m.sender_person_id] ?? "Unknown"}'s agent`}
+                    </span>
+                    {mine && editingMessageId !== m.id && (
+                      <button
+                        type="button"
+                        onClick={() => beginEdit(m)}
+                        title="Edit agent message"
+                        aria-label="Edit agent message"
+                        className="hover:text-neutral-400 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

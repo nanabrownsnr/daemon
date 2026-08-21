@@ -120,6 +120,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
         agent_binding_id: agentBindingId,
         mode: "advice",
         body: draft.body,
+        topic_tag: draft.topic_tag,
       })
       .select()
       .single();
@@ -156,6 +157,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
         mode: "advice",
         body: editBody,
         was_edited: true,
+        topic_tag: draft.topic_tag,
       })
       .select()
       .single();

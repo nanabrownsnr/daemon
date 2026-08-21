@@ -38,6 +38,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | `last_seen` timestamp | Startup catch-up only fetches mentions since last processed. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
 | Connector regression tests | Eight fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude invocation parsing. Keep these running during MVP development. |
+| Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 
 ---
 
@@ -138,6 +139,16 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - **Judgment UAT prepared:** `docs/judgment-uat-2.md` defines a two-person test
   for promotion, cold-topic isolation, non-self-reinforcement, and demotion.
   `npm run uat:analyze -- "uat 2"` performs a read-only event/decision analysis.
+- **Judgment UAT finding:** per-topic promotion correctly chose Act on the
+  fourth API mention after three unedited approvals. Delivery initially failed
+  because the connector inserted legacy `message.mode = 'auto'` after the
+  product enum had been renamed. The connector now inserts `message.mode =
+  'act'`, with a regression assertion covering the exact stored value. A
+  subsequent live mention confirmed `Judgment decided: act` followed by a
+  successful direct chat post. Automatic delivery added no positive judgment
+  event, so the self-reinforcement safeguard also held. Owner editing and the
+  `corrected_after_send` demotion path are now implemented; live demotion UAT
+  remains to be completed.
 - **Plan, not yet executed:** once P2 (rule engine) is built and stable, do
   a full data wipe and re-test with clean, deliberate test scenarios rather
   than accumulated ad-hoc testing data. Don't do this now — current messy

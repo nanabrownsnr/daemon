@@ -74,14 +74,16 @@ test("pause and resume persist connector state", () => {
 
 test("prompt includes recent context, target message, and owner identity", async () => {
   const supabase = { from: () => responseQuery([
-    { body: "First", sender_type: "human" },
-    { body: "Second", sender_type: "agent" },
+    { body: "First", sender_type: "human", sender: { display_name: "Ama" }, agent: null },
+    { body: "Second", sender_type: "agent", sender: { display_name: "Nana" }, agent: { agent_label: "NanaAgent" } },
   ]) };
-  const prompt = await buildPrompt(supabase, { body: "What changed?" }, "chat-1", "Nana");
+  const prompt = await buildPrompt(supabase, { body: "What changed?", sender: { display_name: "Ama" } }, "chat-1", "Nana");
   assert.match(prompt, /Nana/);
-  assert.match(prompt, /\[human\]: First/);
-  assert.match(prompt, /\[agent\]: Second/);
+  assert.match(prompt, /\[Ama\]: First/);
+  assert.match(prompt, /\[NanaAgent, Nana's agent\]: Second/);
+  assert.match(prompt, /From: Ama/);
   assert.match(prompt, /What changed\?/);
+  assert.match(prompt, /Do not invent decisions, commitments, deadlines, approvals/);
 });
 
 test("Advice creates a private draft with classification and trigger", async () => {
@@ -105,6 +107,8 @@ test("Act posts once and does not create a self-reinforcing judgment event", asy
   });
   assert.equal(db.inserts.length, 1);
   assert.equal(db.inserts[0].table, "message");
+  assert.equal(db.inserts[0].row.mode, "act");
+  assert.equal(db.inserts[0].row.topic_tag, "api");
   assert.equal(db.inserts.some(({ table }) => table === "judgment_event"), false);
 });
 
