@@ -74,8 +74,8 @@ export default function AgentBindings({ chatId, personId, personNames }: Props) 
     return () => { supabase.removeChannel(channel); };
   }, [chatId]);
 
-  async function handleToggleMode(binding: AgentBinding) {
-    const newMode = binding.mode === "act" ? "advice" : "act";
+  async function handleSetMode(binding: AgentBinding, newMode: string) {
+    if (binding.mode === newMode) return;
     // optimistic update — flip immediately so the UI responds at once
     setBindings((prev) => prev.map((b) => b.id === binding.id ? { ...b, mode: newMode } : b));
     setLoading(binding.id);
@@ -104,11 +104,16 @@ export default function AgentBindings({ chatId, personId, personNames }: Props) 
     return <p className="text-xs text-neutral-600">No agents yet.</p>;
   }
 
+  const MODES = [
+    { key: "advice", label: "Advice" },
+    { key: "act", label: "Act" },
+    { key: "judgment", label: "Judgment" },
+  ];
+
   return (
     <ul className="space-y-2">
       {bindings.map((b) => {
         const isMe = b.person_id === personId;
-        const isAct = b.mode === "act";
         const isOnline = onlineBindings.has(b.id);
         return (
           <li key={b.id} className="flex items-center gap-2 text-sm">
@@ -124,29 +129,30 @@ export default function AgentBindings({ chatId, personId, personNames }: Props) 
               {isMe && <span className="text-neutral-600 ml-1 text-xs">you</span>}
             </span>
 
-            {/* mode toggle — pill segmented control, Hotels/Apartments style */}
+            {/* mode — three-way pill: Advice | Act | Judgment.
+                Advice/Act are manual pins (human overrides learned trust).
+                Judgment hands the per-mention decision to the platform,
+                evaluated per-topic via decide_topic_mode(). */}
             {isMe && (
-              <div className="flex shrink-0 rounded-full p-0.5 text-xs bg-neutral-700">
-                <button
-                  onClick={() => isAct && handleToggleMode(b)}
-                  disabled={loading === b.id}
-                  className={`px-2 py-0.5 rounded-full transition-all font-medium ${
-                    !isAct ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-200"
-                  }`}
-                >
-                  Advice
-                </button>
-                <button
-                  onClick={() => !isAct && handleToggleMode(b)}
-                  disabled={loading === b.id}
-                  className={`px-2 py-0.5 rounded-full transition-all font-medium ${
-                    isAct ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-200"
-                  }`}
-                >
-                  Act
-                </button>
+              <div
+                title="Advice/Act are manual overrides. Judgment lets the platform decide per-topic, based on how much trust that topic has earned."
+                className="flex shrink-0 rounded-full p-0.5 text-xs bg-neutral-700"
+              >
+                {MODES.map((m) => (
+                  <button
+                    key={m.key}
+                    onClick={() => handleSetMode(b, m.key)}
+                    disabled={loading === b.id}
+                    className={`px-2 py-0.5 rounded-full transition-all font-medium whitespace-nowrap ${
+                      b.mode === m.key ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-200"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
               </div>
             )}
+
 
             {/* remove — only for own binding */}
             {isMe && (

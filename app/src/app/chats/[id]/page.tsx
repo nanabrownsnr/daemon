@@ -6,6 +6,8 @@ import ChatMessages from "./chat-messages";
 import AgentBindings from "./agent-bindings";
 import PrivateThread from "./private-thread";
 import ResizableLayout from "./resizable-layout";
+import LogoutButton from "../logout-button";
+import MembersList from "./members-list";
 
 export default async function ChatPage({
   params,
@@ -34,7 +36,7 @@ export default async function ChatPage({
   }
 
   const { data: chat } = await supabase
-    .from("chat").select("id, name").eq("id", chatId).single();
+    .from("chat").select("id, name, created_by").eq("id", chatId).single();
   if (!chat) notFound();
 
   const { data: members } = await supabase
@@ -66,6 +68,7 @@ export default async function ChatPage({
           <div className="flex items-center gap-2 text-sm text-neutral-400">
             <span>{myPerson.display_name}</span>
             <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+            <LogoutButton />
           </div>
         </div>
       </div>
@@ -82,24 +85,6 @@ export default async function ChatPage({
         }
         sidebar={
           <div className="flex-1 overflow-y-auto sidebar-scroll">
-            
-            {/* Members */}
-            <div className="p-4 border-b border-neutral-800">
-              <p className="text-xs text-neutral-500 uppercase tracking-wide mb-3">Members</p>
-              <ul className="space-y-2">
-                {chatMembers.map((m) => (
-                  <li key={m.id} className="flex items-center gap-2 text-sm">
-                    <span className="w-1.5 h-1.5 rounded-full bg-neutral-600 shrink-0" />
-                    <span className="text-neutral-400 truncate">
-                      {m.display_name}
-                      {m.id === myPerson.id && <span className="text-neutral-600 ml-1 text-xs">you</span>}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>            
-            
-            
             {/* Agents */}
             <div className="p-4 border-b border-neutral-800">
               <div className="flex items-center justify-between mb-3">
@@ -110,6 +95,17 @@ export default async function ChatPage({
                 chatId={chatId}
                 personId={myPerson.id}
                 personNames={personNames}
+              />
+            </div>
+
+            {/* Members */}
+            <div className="p-4 border-b border-neutral-800">
+              <p className="text-xs text-neutral-500 uppercase tracking-wide mb-3">Members</p>
+              <MembersList
+                chatId={chatId}
+                members={chatMembers}
+                myPersonId={myPerson.id}
+                isOwner={chat.created_by === myPerson.id}
               />
             </div>
 

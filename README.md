@@ -1,39 +1,47 @@
-# dæmon — Sprint 0
+# Dæmon
 
-Foundations: schema + interfaces, no user-facing app yet. See `/docs` reference
-docs (`daemon-product-one-pager.md`, `daemon-mvp-dev-plan.md`) for the model
-this implements.
+Dæmon is an AI-native team chat that connects a developer's local Claude Code
+agent to conversations with their team. A person can bind Claude Code to a chat,
+receive agent-generated drafts privately, or allow trusted responses to post
+directly.
 
-## Stack decision
+## Architecture
 
-- **Next.js** (app) + **Supabase** (Postgres, Realtime, Auth)
-- Rationale: real-time chat, database, and auth in one platform; free tier
-  covers MVP scale (1-3 users); Postgres maps directly to the relational
-  schema below without translation. Swappable later if needed — nothing
-  downstream depends on this choice beyond the schema being SQL.
+- `app/` — Next.js web application for authentication, chats, mentions, agent
+  bindings, Advice/Act controls, private drafts, and presence.
+- `connector/` — local Node.js relay that authenticates with Supabase, listens
+  for mentions, invokes Claude Code in the configured project, and routes the
+  response.
+- `docs/daemon-work-log.md` — current product status, decisions, and backlog.
+- Supabase provides Postgres, Auth, Realtime, and Presence.
 
-## What's done (Sprint 0)
+## Current flow
 
-- [x] Core schema (`schema/001_init.sql`): person, chat, agent_binding
-      (context-scoped from day one), message, private_thread_message,
-      relationship_link (category-based for MVP), topic_trust, judgment_event
-- [x] Agent adapter interface (`src/agents/agent-interface.ts`) — stub,
-      Sprint 2 implements the real Claude Code adapter against this shape
-- [x] Judgment engine interface (`src/lib/judgment.ts`) — stub, Sprint 4
-      implements the actual rule logic
+1. Create an account and chat in the web application.
+2. Add a Claude Code binding with a local project path.
+3. Start the local connector using the same account.
+4. A teammate mentions the person in chat.
+5. The connector invokes Claude Code with recent chat and project context.
+6. Advice mode creates a private draft; Act mode posts the response directly.
 
-## Setup (when ready to run)
+## Development
 
-1. Create a Supabase project
-2. Run `schema/001_init.sql` against it (SQL editor or migration tool)
-3. `npx create-next-app@latest` in this directory, add `@supabase/supabase-js`
-4. Wire Supabase client + auth (Sprint 1)
+The web application and connector have separate Node.js packages:
 
-## Next: Sprint 1
+```bash
+cd app
+npm install
+npm run dev
+```
 
-Basic group chat — humans only, no agents yet. See `daemon-mvp-dev-plan.md`.
+```bash
+cd connector
+npm install
+node src/cli.js start
+```
 
-## Deliberately not touched yet
+Configure each package from its `.env.example` file. Claude Code must be
+installed and authenticated on the machine running the connector.
 
-Multi-agent support, true pairwise relationship links (chemistry model),
-ML-based judgment scoring, enterprise features. All real, all post-MVP.
+The live Supabase project currently owns the database schema and policies; this
+repository does not maintain local migration files.

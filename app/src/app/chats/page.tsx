@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import CreateChatForm from "./create-chat-form";
 import LogoutButton from "./logout-button";
+import ChatCardAction from "./chat-card-action";
 
 export default async function ChatsPage() {
   const supabase = await createClient();
@@ -37,7 +38,7 @@ export default async function ChatsPage() {
   // chats this person is a member of
   const { data: memberships } = await supabase
     .from("chat_member")
-    .select("chat_id, chat:chat_id(id, name, is_group, created_at)")
+    .select("chat_id, chat:chat_id(id, name, is_group, created_at, created_by)")
     .eq("person_id", person.id);
 
   const chats = (memberships ?? []).map((m: any) => m.chat).filter(Boolean);
@@ -47,7 +48,7 @@ export default async function ChatsPage() {
       <div className="max-w-lg mx-auto space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-semibold">
-            groupwork — {person.display_name}
+            dæmon — {person.display_name}
           </h1>
           <LogoutButton />
         </div>
@@ -63,13 +64,18 @@ export default async function ChatsPage() {
           )}
           <ul className="space-y-1">
             {chats.map((chat: any) => (
-              <li key={chat.id}>
+              <li key={chat.id} className="flex items-center gap-2">
                 <a
                   href={`/chats/${chat.id}`}
-                  className="block rounded bg-neutral-900 border border-neutral-800 px-4 py-3 hover:border-neutral-600"
+                  className="flex-1 min-w-0 block rounded bg-neutral-900 border border-neutral-800 px-4 py-3 hover:border-neutral-600"
                 >
                   {chat.name || "(untitled chat)"}
                 </a>
+                <ChatCardAction
+                  chatId={chat.id}
+                  isOwner={chat.created_by === person.id}
+                  personId={person.id}
+                />
               </li>
             ))}
           </ul>
