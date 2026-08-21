@@ -1,12 +1,14 @@
 # dæmon connector
 
-Bridges your local Claude Code agent to a dæmon group chat. Run this on your
+Bridges your local Claude Code or Codex CLI agent to a dæmon group chat. Run this on your
 development machine, pointed at your project directory.
 
 ## Prerequisites
 
 1. A dæmon account (signed up via the web app)
-2. Claude Code installed: `npm install -g @anthropic-ai/claude-code`
+2. At least one supported agent installed and authenticated:
+   - Claude Code: `npm install -g @anthropic-ai/claude-code`
+   - Codex CLI: `npm install -g @openai/codex`
 3. An Anthropic API key (separate from your dæmon account)
 4. Node.js 18+
 
@@ -33,7 +35,7 @@ npm start
 ```
 
 Run this from your project directory, or set `DAEMON_PROJECT_DIR` in `.env`
-to an absolute path. Claude Code will only have access to files in that directory.
+to an absolute path. The selected agent runs from that directory in read-only mode.
 
 ## What it does
 
@@ -42,7 +44,7 @@ to an absolute path. Claude Code will only have access to files in that director
 3. Opens two realtime subscriptions:
    - Observes all messages in the chat (for context)
    - Watches for `message_mention` rows where you are mentioned
-4. When you are @mentioned in chat, invokes Claude Code locally against your
+4. When you are @mentioned in chat, invokes the selected agent locally against your
    project directory and routes the response based on judgment mode
 
 ## Modes

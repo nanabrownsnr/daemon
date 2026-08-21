@@ -12,6 +12,7 @@ export default function AgentModal({
   personId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [agentType, setAgentType] = useState("claude_code");
   const [agentLabel, setAgentLabel] = useState("");
   const [projectPath, setProjectPath] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,7 +28,7 @@ export default function AgentModal({
     const { error } = await supabase.from("agent_binding").insert({
       chat_id: chatId,
       person_id: personId,
-      agent_type: "claude_code",
+      agent_type: agentType,
       agent_label: agentLabel || null,
       project_path: projectPath || null,
       mode: "advice",
@@ -40,6 +41,7 @@ export default function AgentModal({
     }
 
     setOpen(false);
+    setAgentType("claude_code");
     setAgentLabel("");
     setProjectPath("");
     setLoading(false);
@@ -66,9 +68,14 @@ export default function AgentModal({
             <form onSubmit={handleAdd} className="space-y-3">
               <div>
                 <label className="text-xs text-neutral-500 mb-1 block">Agent type</label>
-                <div className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm text-neutral-300">
-                  Claude Code
-                </div>
+                <select
+                  value={agentType}
+                  onChange={(e) => setAgentType(e.target.value)}
+                  className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm text-neutral-300"
+                >
+                  <option value="claude_code">Claude Code</option>
+                  <option value="codex_cli">Codex CLI</option>
+                </select>
               </div>
               <div>
                 <label className="text-xs text-neutral-500 mb-1 block">Label <span className="text-neutral-600">(optional)</span></label>

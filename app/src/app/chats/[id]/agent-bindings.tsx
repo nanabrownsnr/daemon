@@ -16,6 +16,11 @@ type Props = {
   personId: string;
 };
 
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex_cli: "Codex CLI",
+};
+
 export default function AgentBindings({ chatId, personId }: Props) {
   const [bindings, setBindings] = useState<AgentBinding[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
@@ -124,7 +129,7 @@ export default function AgentBindings({ chatId, personId }: Props) {
 
             {/* name */}
             <span className="text-neutral-300 truncate flex-1 min-w-0">
-              {b.agent_label ?? b.agent_type}
+              {b.agent_label ?? AGENT_TYPE_LABELS[b.agent_type] ?? b.agent_type}
               {isMe && <span className="text-neutral-600 ml-1 text-xs">you</span>}
             </span>
 

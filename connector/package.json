@@ -1,7 +1,7 @@
 {
   "name": "@daemon/connect",
   "version": "0.1.0",
-  "description": "Local bridge connecting your Claude Code agent to a dæmon chat",
+  "description": "Local bridge connecting Claude Code or Codex CLI to a dæmon chat",
   "type": "module",
   "bin": {
     "daemon-connect": "./src/cli.js"

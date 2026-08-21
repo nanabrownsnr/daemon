@@ -128,12 +128,12 @@ test("invite by email and chat membership", async ({ page }) => {
   expect(data?.map((row) => row.person_id)).toContain(memberPersonId);
 });
 
-test("Claude-only binding and three-way mode control", async ({ page }) => {
+test("supported agent binding and three-way mode control", async ({ page }) => {
   await login(page, env.REGRESSION_USER_A_EMAIL, env.REGRESSION_USER_A_PASSWORD);
   await page.goto(`/chats/${chatId}`);
   await page.getByRole("button", { name: "+ add", exact: true }).click();
-  await expect(page.getByText("Claude Code", { exact: true })).toBeVisible();
-  await expect(page.getByText("Codex", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: "Claude Code" })).toHaveCount(1);
+  await expect(page.getByRole("option", { name: "Codex CLI" })).toHaveCount(1);
   await page.getByPlaceholder("e.g. Backend agent").fill(`Regression agent ${runId}`);
   await page.getByPlaceholder("/home/you/code/my-project").fill(env.REGRESSION_AGENT_PROJECT_PATH);
   await page.getByRole("button", { name: "Add agent" }).click();

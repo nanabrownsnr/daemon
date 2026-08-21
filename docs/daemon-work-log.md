@@ -28,16 +28,17 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Chat creation + listing | Working. |
 | Invite by email | `find_person_by_email` RPC. Working. |
 | Real-time messaging (human → human) | Supabase Realtime via WAL. Confirmed across two separate browsers. |
-| Agent binding registration UI | Person configures a Claude Code label and project path → stored in `agent_binding`. Claude Code is the only exposed agent type. |
+| Agent binding registration UI | Person selects Claude Code or Codex CLI, configures a label and project path, and stores it in `agent_binding`. |
 | @ mention autocomplete | Dropdown on `@`, picks from chat members, inserts `message_mention` row(s) at send time. Handles multiple mentions per message. |
 | Connector: auth + binding fetch | Connector logs in, fetches all bindings for this person across all chats from DB. No per-binding env config. |
 | Connector: dual subscription | Observes all messages (context), subscribes to `message_mention` for trigger. |
 | Connector: multi-binding aware | One connector process manages all chats/agents for a person. |
-| Agent type registry (`agent-types.js`) | Claude Code invocation is implemented. Additional agent types remain backlog work and are not exposed in the UI. |
+| Agent type registry (`agent-types.js`) | Claude Code and Codex CLI are implemented behind the same invocation contract. Both are exposed in the binding UI. |
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
 | `last_seen` timestamp | Startup catch-up only fetches mentions since last processed. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
-| Connector regression tests | Eight fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude invocation parsing. Keep these running during MVP development. |
+| Connector regression tests | Fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation parsing. Keep these running during MVP development. |
+| Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is then persisted per binding and resumed exactly. Execution is forced to `read-only` with approvals disabled. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
 | Auth/session hardening | Next.js 16 `proxy.ts` refreshes Supabase sessions and protects `/chats`; authenticated users are redirected away from `/auth`. Signup normalizes input and handles both immediate sessions and future email-confirmation mode. |
@@ -86,7 +87,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 19 | **Email confirmation re-enable** | Currently disabled for dev. Must re-enable before any external users. |
 | 20 | **Agent-to-agent loop circuit breaker** | Once auto-triggering exists beyond explicit mention, need a max-hop-count or "agents can't mention each other without a human-initiated thread" rule. |
 | 21 | **Desktop app / native file picker** | For smoother connector onboarding (select folder, pick agent type, done). Deferred until loop is proven. |
-| 22 | **Additional agent adapters** | Goose (Block), Ollama, others. Architecture supports it via `agent-types.js` — just add an entry. |
+| 22 | ✅ **Second agent adapter: Codex CLI** | Codex CLI now shares the connector, prompt, routing, session persistence, presence, and Judgment pipeline with Claude Code. Goose, Hermes, Ollama, and others remain future adapter work. |
 | 23 | **Multi-agent per person per chat** | Schema unique constraint (person, chat) currently enforces one binding. Relax when multi-agent use cases are proven. |
 | 24 | **UI redesign** | Current UI is functional but unstyled. Redesign is a pure CSS/className change — no logic touch — estimated 1-2 days with a clear design direction. |
 | 25 | **Rename product** | "dæmon" → something simpler floated. Deferred. |
@@ -111,6 +112,9 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Agent message attribution: "Sent by [Name]'s dæmon" | Shown under every agent-sent message, visible to all chat members, not just the sender. "On behalf of" was considered but rejected — inaccurate tense for something already sent. |
 | Connector-owned Claude Code session (separate session_id) | Avoids race condition with interactive session. `--resume` provides continuity within dæmon-triggered Q&A specifically |
 | Read-only enforcement via `--allowedTools` (Claude Code) | Hard-coded at connector spawn level, not per-message. Write capability deliberately not offered |
+| Codex CLI is the second supported runtime | Proves the product loop is platform-neutral while staying focused on two widely used developer agents. |
+| Project directory is the initial agent-context boundary | Claude uses its directory-scoped continuation behavior; Codex first tries `exec resume --last` from that directory. Once attached or created, the connector stores the exact session/thread ID per binding. |
+| Codex connector sessions are read-only | `codex exec --json` supplies a durable thread ID; subsequent mentions resume it. `--sandbox read-only` and `--ask-for-approval never` prevent unattended repository writes or blocked approval prompts. |
 
 ## Session Notes — Post-restore fixes
 

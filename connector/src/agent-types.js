@@ -95,5 +95,108 @@ export const AGENT_TYPES = {
         child.stdin.end();
       });
     },
-  }
+  },
+  codex_cli: {
+    label: "Codex CLI",
+    invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn) => {
+      const runCodex = (args, fallbackSessionId) => new Promise((resolve) => {
+        const child = spawnProcess("codex", args, {
+          cwd: projectDir,
+          env: process.env,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+
+        let stdout = "";
+        let stderr = "";
+        let settled = false;
+
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          resolve(result);
+        };
+
+        child.stdout.on("data", (data) => {
+          stdout += data.toString();
+        });
+
+        child.stderr.on("data", (data) => {
+          stderr += data.toString();
+        });
+
+        child.on("error", (error) => {
+          console.error("[daemon] Failed to start Codex CLI:", error.message);
+          finish({ response: null, sessionId: fallbackSessionId, failed: true });
+        });
+
+        child.on("close", (code) => {
+          if (code !== 0) {
+            console.error(`[daemon] Codex exited with code ${code}: ${stderr.trim()}`);
+            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            return;
+          }
+
+          let newSessionId = fallbackSessionId;
+          let response = null;
+
+          try {
+            for (const line of stdout.split(/\r?\n/).filter(Boolean)) {
+              const event = JSON.parse(line);
+              if (event.type === "thread.started" && event.thread_id) {
+                newSessionId = event.thread_id;
+              }
+              if (event.type === "item.completed"
+                  && event.item?.type === "agent_message"
+                  && event.item.text?.trim()) {
+                response = event.item.text.trim();
+              }
+            }
+          } catch (error) {
+            console.error("[daemon] Failed to parse Codex JSONL output:", error.message);
+            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            return;
+          }
+
+          if (!response) {
+            console.error("[daemon] Codex completed without an agent message.");
+          }
+          finish({ response, sessionId: newSessionId, failed: false });
+        });
+
+        child.stdin.end();
+      });
+
+      const baseArgs = [
+        "--ask-for-approval", "never",
+        "--sandbox", "read-only",
+        "exec",
+      ];
+
+      if (sessionId) {
+        console.log(`[daemon] Resuming Codex session ID: ${sessionId}`);
+        const result = await runCodex([
+          ...baseArgs,
+          "resume", "--json", "--skip-git-repo-check", sessionId, prompt,
+        ], sessionId);
+        return { response: result.response, sessionId: result.sessionId };
+      }
+
+      console.log(`[daemon] Attaching to the latest Codex session in ${projectDir}.`);
+      const latest = await runCodex([
+        ...baseArgs,
+        "resume", "--last", "--json", "--skip-git-repo-check", prompt,
+      ], null);
+
+      if (!latest.failed) {
+        return { response: latest.response, sessionId: latest.sessionId };
+      }
+
+      console.log("[daemon] No resumable Codex session found; starting a new one.");
+      const created = await runCodex([
+        ...baseArgs,
+        "--json", "--skip-git-repo-check", prompt,
+      ], null);
+      return { response: created.response, sessionId: created.sessionId };
+    },
+  },
 };

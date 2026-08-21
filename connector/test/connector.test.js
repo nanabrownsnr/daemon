@@ -155,3 +155,87 @@ test("Claude adapter is read-only, resumes sessions, and parses JSON output", as
   assert.equal(invocation.options.cwd, "/tmp/project");
   assert.deepEqual(result, { response: "Done", sessionId: "new-session" });
 });
+
+test("Codex adapter is read-only, resumes sessions, and parses JSONL output", async () => {
+  let invocation;
+  const fakeSpawn = (command, args, options) => {
+    invocation = { command, args, options };
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end() {} };
+    queueMicrotask(() => {
+      child.stdout.emit("data", Buffer.from([
+        JSON.stringify({ type: "thread.started", thread_id: "new-thread" }),
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "agent_message", text: "Done from Codex" },
+        }),
+        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 10 } }),
+      ].join("\n")));
+      child.emit("close", 0);
+    });
+    return child;
+  };
+
+  const result = await AGENT_TYPES.codex_cli.invoke(
+    "Prompt",
+    "/tmp/project",
+    "old-thread",
+    fakeSpawn,
+  );
+
+  assert.equal(invocation.command, "codex");
+  assert.ok(invocation.args.includes("read-only"));
+  assert.ok(invocation.args.includes("never"));
+  assert.ok(invocation.args.includes("resume"));
+  assert.deepEqual(
+    invocation.args.slice(-3),
+    ["--skip-git-repo-check", "old-thread", "Prompt"],
+  );
+  assert.equal(invocation.options.cwd, "/tmp/project");
+  assert.deepEqual(result, { response: "Done from Codex", sessionId: "new-thread" });
+});
+
+test("Codex first invocation tries the latest project session before creating one", async () => {
+  const invocations = [];
+  const fakeSpawn = (command, args, options) => {
+    invocations.push({ command, args, options });
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end() {} };
+    queueMicrotask(() => {
+      if (invocations.length === 1) {
+        child.stderr.emit("data", Buffer.from("no sessions found"));
+        child.emit("close", 1);
+        return;
+      }
+      child.stdout.emit("data", Buffer.from([
+        JSON.stringify({ type: "thread.started", thread_id: "created-thread" }),
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "agent_message", text: "Started fresh" },
+        }),
+      ].join("\n")));
+      child.emit("close", 0);
+    });
+    return child;
+  };
+
+  const result = await AGENT_TYPES.codex_cli.invoke(
+    "Prompt",
+    "/tmp/project",
+    null,
+    fakeSpawn,
+  );
+
+  assert.equal(invocations.length, 2);
+  assert.ok(invocations[0].args.includes("--last"));
+  assert.equal(invocations[0].options.cwd, "/tmp/project");
+  assert.ok(!invocations[1].args.includes("resume"));
+  assert.deepEqual(result, {
+    response: "Started fresh",
+    sessionId: "created-thread",
+  });
+});
