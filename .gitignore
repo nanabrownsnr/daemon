@@ -2,3 +2,5 @@
 /connector/.env
 /connector/*.tgz
 /schema
+/supabase/functions/.env
+/supabase/functions/.env.local

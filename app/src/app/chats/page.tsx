@@ -8,6 +8,7 @@ import ChatCardAction from "./chat-card-action";
 type Chat = {
   id: string;
   name: string | null;
+  is_group: boolean;
   created_at: string;
   created_by: string | null;
 };
@@ -102,7 +103,7 @@ export default async function ChatsPage() {
                       {chat.name || "Untitled chat"}
                     </span>
                     <span className="block text-xs text-neutral-600">
-                      {chat.created_by === person.id ? "Created by you" : "Team conversation"}
+                      {!chat.is_group ? "Solo workspace" : chat.created_by === person.id ? "Created by you" : "Team conversation"}
                     </span>
                   </span>
                 </Link>

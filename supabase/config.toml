@@ -1,0 +1,7 @@
+project_id = "groupwork"
+
+[edge_runtime]
+policy = "per_worker"
+
+[functions.summarize-chat]
+verify_jwt = false

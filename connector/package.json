@@ -1,6 +1,6 @@
 {
   "name": "@daemon/connect",
-  "version": "0.1.0",
+  "version": "0.4.3",
   "description": "Local bridge connecting Claude Code or Codex CLI to a dæmon chat",
   "type": "module",
   "files": [

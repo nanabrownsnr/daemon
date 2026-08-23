@@ -12,21 +12,52 @@ type Draft = {
   topic_tag: string | null;
   question_type: string | null;
   trigger_message_id: string | null;
+  agent_binding_id: string | null;
+};
+
+type AgentBinding = {
+  id: string;
+  agent_type: string;
+  agent_label: string | null;
+};
+
+type RunRequest = {
+  id: string;
+  status: "pending" | "approved" | "running" | "completed" | "failed" | "rejected";
+  permission: "read_only" | "workspace_write";
+  created_at: string;
+  agent_binding_id: string;
+  message: {
+    body: string;
+    sender: { display_name: string } | null;
+  } | null;
 };
 
 type Props = {
   chatId: string;
   personId: string;
-  agentBindingId: string | null; // null if no binding in this chat
+  agentBindings: AgentBinding[];
 };
 
-export default function PrivateThread({ chatId, personId, agentBindingId }: Props) {
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex_cli: "Codex CLI",
+};
+
+export default function PrivateThread({ chatId, personId, agentBindings }: Props) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [runRequests, setRunRequests] = useState<RunRequest[]>([]);
+  const [selectedBindingId, setSelectedBindingId] = useState(agentBindings[0]?.id ?? null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [loading, setLoading] = useState<string | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const viewedAtRef = useRef<Record<string, string>>({});
   const supabase = createClient();
+  const bindingKey = agentBindings.map((binding) => binding.id).join(",");
+  const activeBindingId = agentBindings.some((binding) => binding.id === selectedBindingId)
+    ? selectedBindingId
+    : agentBindings[0]?.id ?? null;
 
   const markViewed = useCallback(async (draftId: string) => {
     const now = new Date().toISOString();
@@ -40,10 +71,10 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
 
   // load existing drafts
   useEffect(() => {
-    if (!agentBindingId) return;
+    if (agentBindings.length === 0) return;
     supabase
       .from("private_thread_message")
-      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id")
+      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id, agent_binding_id")
       .eq("chat_id", chatId)
       .eq("person_id", personId)
       .eq("sender_type", "agent")
@@ -51,16 +82,59 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
       .order("created_at", { ascending: true })
       .then(({ data }) => {
         setDrafts(data ?? []);
-        // mark unviewed drafts as viewed
-        (data ?? []).forEach((d) => {
-          if (!d.first_viewed_at) markViewed(d.id);
-        });
       });
-  }, [chatId, personId, agentBindingId, markViewed, supabase]);
+  }, [chatId, personId, bindingKey, agentBindings.length, supabase]);
+
+  // Team work does not reach a local agent until its owner approves it here.
+  useEffect(() => {
+    if (agentBindings.length === 0) return;
+    supabase
+      .from("agent_run_request")
+      .select("id, status, permission, created_at, agent_binding_id, message:message_id(body, sender:sender_person_id(display_name))")
+      .eq("owner_person_id", personId)
+      .in("status", ["pending", "approved", "running", "failed"])
+      .order("created_at", { ascending: true })
+      .then(({ data }) => setRunRequests((data ?? []) as unknown as RunRequest[]));
+  }, [personId, bindingKey, agentBindings.length, supabase]);
+
+  useEffect(() => {
+    if (agentBindings.length === 0) return;
+    const channel = supabase
+      .channel(`agent-runs:${personId}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "agent_run_request",
+        filter: `owner_person_id=eq.${personId}`,
+      }, (payload) => {
+        const changed = (payload.new ?? payload.old) as RunRequest;
+        if (!changed?.id) return;
+        if (changed.status === "completed" || changed.status === "rejected") {
+          setRunRequests((previous) => previous.filter((request) => request.id !== changed.id));
+          return;
+        }
+        // Re-fetch to retain the joined message and sender information.
+        supabase
+          .from("agent_run_request")
+          .select("id, status, permission, created_at, agent_binding_id, message:message_id(body, sender:sender_person_id(display_name))")
+          .eq("id", changed.id)
+          .single()
+          .then(({ data }) => {
+            if (!data) return;
+            const request = data as unknown as RunRequest;
+            setRunRequests((previous) => [
+              ...previous.filter((item) => item.id !== request.id),
+              request,
+            ].sort((a, b) => a.created_at.localeCompare(b.created_at)));
+          });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [personId, bindingKey, agentBindings.length, supabase]);
 
   // realtime: new drafts from agent
   useEffect(() => {
-    if (!agentBindingId) return;
+    if (agentBindings.length === 0) return;
     const channel = supabase
       .channel(`private:${chatId}:${personId}`)
       .on("postgres_changes", {
@@ -71,19 +145,31 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
       }, (payload) => {
         const msg = payload.new as Draft;
         if (msg.sender_type !== "agent") return;
+        if (msg.agent_binding_id && !agentBindings.some((binding) => binding.id === msg.agent_binding_id)) return;
         setDrafts((prev) => [...prev, msg]);
-        markViewed(msg.id);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [chatId, personId, agentBindingId, markViewed, supabase]);
+  }, [chatId, personId, bindingKey, agentBindings, supabase]);
+
+  const visibleDrafts = drafts.filter((draft) =>
+    draft.agent_binding_id === activeBindingId
+      || (agentBindings.length === 1 && draft.agent_binding_id === null)
+  );
+
+  useEffect(() => {
+    visibleDrafts.forEach((draft) => {
+      if (!draft.first_viewed_at && !viewedAtRef.current[draft.id]) void markViewed(draft.id);
+    });
+  }, [visibleDrafts, markViewed]);
 
   async function recordEvent(
     draft: Draft,
     signal: string,
     extraFields: Record<string, string | number | boolean | null> = {}
   ) {
-    if (!agentBindingId) return;
+    const bindingId = draft.agent_binding_id ?? activeBindingId;
+    if (!bindingId) return;
     const firstViewed = viewedAtRef.current[draft.id];
     const responseTimeMs = firstViewed
       ? new Date().getTime() - new Date(firstViewed).getTime()
@@ -91,7 +177,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
 
     await supabase.from("judgment_event").insert({
       person_id: personId,
-      agent_binding_id: agentBindingId,
+      agent_binding_id: bindingId,
       private_thread_message_id: draft.id,
       message_id: draft.trigger_message_id,
       signal,
@@ -107,6 +193,34 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
     setDrafts((prev) => prev.filter((d) => d.id !== draftId));
   }
 
+  async function decideRunRequest(
+    request: RunRequest,
+    decision: "approve" | "reject",
+    permission: "read_only" | "workspace_write" = "read_only"
+  ) {
+    setLoading(request.id);
+    setRequestError(null);
+    const { data, error } = await supabase.rpc("decide_agent_run_request", {
+      p_request_id: request.id,
+      p_decision: decision,
+      p_permission: permission,
+    });
+    if (error) {
+      setRequestError(error.message);
+      setLoading(null);
+      return;
+    }
+    if (decision === "reject") {
+      setRunRequests((previous) => previous.filter((item) => item.id !== request.id));
+    } else {
+      const decided = data as RunRequest;
+      setRunRequests((previous) => previous.map((item) =>
+        item.id === request.id ? { ...item, status: decided.status, permission: decided.permission } : item
+      ));
+    }
+    setLoading(null);
+  }
+
   async function handleSendAsIs(draft: Draft) {
     setLoading(draft.id);
 
@@ -117,7 +231,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
         chat_id: chatId,
         sender_person_id: personId,
         sender_type: "agent",
-        agent_binding_id: agentBindingId,
+        agent_binding_id: draft.agent_binding_id ?? activeBindingId,
         mode: "advice",
         body: draft.body,
         topic_tag: draft.topic_tag,
@@ -153,7 +267,7 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
         chat_id: chatId,
         sender_person_id: personId,
         sender_type: "agent",
-        agent_binding_id: agentBindingId,
+        agent_binding_id: draft.agent_binding_id ?? activeBindingId,
         mode: "advice",
         body: editBody,
         was_edited: true,
@@ -204,27 +318,89 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
     setLoading(null);
   }
 
-  if (!agentBindingId) return null;
+  if (agentBindings.length === 0 || !activeBindingId) return null;
 
   return (
     <section className="space-y-3 p-4">
       <h2 className="text-xs text-neutral-500 uppercase tracking-wide flex items-center gap-2">
         Agent Workspace
-        {drafts.length > 0 && (
+        {visibleDrafts.length + runRequests.length > 0 && (
           <span className="bg-neutral-700 text-neutral-200 text-xs px-1.5 py-0.5 rounded-full">
-            {drafts.length}
+            {visibleDrafts.length + runRequests.length}
           </span>
         )}
       </h2>
 
-      {drafts.length === 0 && (
+      {agentBindings.length > 1 && (
+        <div className="flex flex-wrap gap-1">
+          {agentBindings.map((binding) => {
+            const count = drafts.filter((draft) => draft.agent_binding_id === binding.id).length;
+            return (
+              <button
+                key={binding.id}
+                type="button"
+                onClick={() => setSelectedBindingId(binding.id)}
+                className={`rounded px-2 py-1 text-xs transition-colors ${activeBindingId === binding.id ? "bg-neutral-700 text-neutral-100" : "text-neutral-500 hover:text-neutral-300"}`}
+              >
+                {binding.agent_label ?? AGENT_TYPE_LABELS[binding.agent_type] ?? binding.agent_type}
+                {count > 0 && <span className="ml-1 text-neutral-400">{count}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {requestError && <p className="text-xs text-red-400">{requestError}</p>}
+
+      {runRequests.length > 0 && (
+        <div className="space-y-3">
+          {runRequests.map((request) => {
+            const binding = agentBindings.find((item) => item.id === request.agent_binding_id);
+            const label = binding?.agent_label ?? (binding ? AGENT_TYPE_LABELS[binding.agent_type] : null) ?? "Agent";
+            return (
+              <div key={request.id} className="rounded border border-amber-900/60 bg-amber-950/20 p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-amber-400">Run request · {label}</span>
+                  {request.status !== "pending" && (
+                    <span className="text-xs capitalize text-neutral-500">{request.status.replace("_", " ")}</span>
+                  )}
+                </div>
+                <p className="text-xs text-neutral-500">From {request.message?.sender?.display_name ?? "a teammate"}</p>
+                <p className="text-sm text-neutral-200">{request.message?.body ?? "Requested agent work"}</p>
+                {(request.status === "pending" || request.status === "failed") && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => decideRunRequest(request, "approve", "workspace_write")}
+                      disabled={loading === request.id}
+                      className="rounded bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-900 disabled:opacity-50"
+                    >
+                      {request.status === "failed" ? "Retry" : "Accept"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => decideRunRequest(request, "reject")}
+                      disabled={loading === request.id}
+                      className="px-1 py-1 text-xs text-neutral-600 hover:text-neutral-400 disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {visibleDrafts.length === 0 && runRequests.length === 0 && (
         <p className="text-neutral-600 text-xs">
           No pending drafts. Mentions of you will appear here for review.
         </p>
       )}
 
       <div className="space-y-3">
-        {drafts.map((draft) => (
+        {visibleDrafts.map((draft) => (
           <div
             key={draft.id}
             className="rounded border border-neutral-700 bg-neutral-900 p-3 space-y-2"

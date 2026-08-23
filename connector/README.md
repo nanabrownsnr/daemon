@@ -29,17 +29,25 @@ groupwork-connect start
 ```
 
 The project directory and agent type come from the binding configured in the
-groupwork chat. The selected agent runs from that directory in read-only mode.
+groupwork chat. Solo agents can edit their assigned workspace, run local
+validation, and use network access because the owner explicitly invokes them.
+Team-chat invocations are queued in Agent Workspace until the agent owner
+accepts or rejects the work; acceptance grants the same practical execution
+bundle inside the bound project.
 
 ## What it does
 
 1. Restores the browser-authorized groupwork session stored on this computer
 2. Fetches your agent bindings across all chats
-3. Opens two realtime subscriptions:
+3. Opens realtime subscriptions that:
    - Observes all messages in the chat (for context)
-   - Watches for `message_mention` rows where you are mentioned
-4. When you are @mentioned in chat, invokes the selected agent locally against your
-   project directory and routes the response based on judgment mode
+   - Watches owner-approved Team run requests and binding-specific Solo mentions
+4. Invokes Solo mentions immediately; Team work only runs after its owner
+   accepts the request
+5. Reads the platform-owned shared summary while retaining each agent's recent
+   raw-message delta; Supabase generates summaries independently of connectors
+6. Publishes live presence state: green when online, pulsing yellow while
+   working, and temporarily red after an invocation failure
 
 ## Modes
 

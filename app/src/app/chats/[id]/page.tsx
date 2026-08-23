@@ -10,6 +10,7 @@ import ResizableLayout from "./resizable-layout";
 import LogoutButton from "../logout-button";
 import MembersList from "./members-list";
 import CollapsibleSidebarSection from "./collapsible-sidebar-section";
+import ChatSummary from "./chat-summary";
 
 export default async function ChatPage({
   params,
@@ -46,11 +47,12 @@ export default async function ChatPage({
     .select("person:person_id(id, display_name)")
     .eq("chat_id", chatId);
 
-  const { data: myBinding } = await supabase
-    .from("agent_binding").select("id")
-    .eq("chat_id", chatId).eq("person_id", myPerson.id)
-    .limit(1)
-    .maybeSingle();
+  const { data: chatBindings } = await supabase
+    .from("agent_binding")
+    .select("id, person_id, agent_type, agent_label")
+    .eq("chat_id", chatId);
+
+  const myBindings = (chatBindings ?? []).filter((binding) => binding.person_id === myPerson.id);
 
   const chatMembers = (members ?? []).flatMap((membership) => {
     const related = Array.isArray(membership.person) ? membership.person[0] : membership.person;
@@ -85,6 +87,8 @@ export default async function ChatPage({
             personId={myPerson.id}
             personNames={personNames}
             chatMembers={chatMembers}
+            isSolo={!chat.is_group}
+            agentBindings={chatBindings ?? []}
           />
         }
         sidebar={
@@ -92,7 +96,9 @@ export default async function ChatPage({
             {/* Agents */}
             <CollapsibleSidebarSection
               title="Agents"
-              action={!chat.is_group || !myBinding ? <AgentModal chatId={chatId} personId={myPerson.id} /> : undefined}
+              action={!chat.is_group || myBindings.length === 0
+                ? <AgentModal chatId={chatId} personId={myPerson.id} isSolo={!chat.is_group} />
+                : undefined}
             >
               <AgentBindings
                 chatId={chatId}
@@ -101,16 +107,22 @@ export default async function ChatPage({
             </CollapsibleSidebarSection>
 
             {/* Members */}
-            <CollapsibleSidebarSection
-              title="Members"
-              action={chat.created_by === myPerson.id ? <InviteModal chatId={chatId} /> : undefined}
-            >
-              <MembersList
-                chatId={chatId}
-                members={chatMembers}
-                myPersonId={myPerson.id}
-                isOwner={chat.created_by === myPerson.id}
-              />
+            {chat.is_group && (
+              <CollapsibleSidebarSection
+                title="Members"
+                action={chat.created_by === myPerson.id ? <InviteModal chatId={chatId} /> : undefined}
+              >
+                <MembersList
+                  chatId={chatId}
+                  members={chatMembers}
+                  myPersonId={myPerson.id}
+                  isOwner={chat.created_by === myPerson.id}
+                />
+              </CollapsibleSidebarSection>
+            )}
+
+            <CollapsibleSidebarSection title="Shared context">
+              <ChatSummary chatId={chatId} />
             </CollapsibleSidebarSection>
 
             {/* Agent workspace */}
@@ -118,7 +130,7 @@ export default async function ChatPage({
               <PrivateThread
                 chatId={chatId}
                 personId={myPerson.id}
-                agentBindingId={myBinding?.id ?? null}
+                agentBindings={myBindings}
               />
             
           </div>

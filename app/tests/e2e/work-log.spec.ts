@@ -108,11 +108,12 @@ test("auth, person sync, chat creation, and listing", async ({ page }) => {
   await login(page, env.REGRESSION_USER_A_EMAIL, env.REGRESSION_USER_A_PASSWORD);
   await expect(page.getByRole("heading", { name: "Your conversations", exact: true })).toBeVisible();
   await expect(page.getByText(`Signed in as ${env.REGRESSION_USER_A_NAME}`, { exact: true })).toBeVisible();
-  await page.getByPlaceholder("e.g. Product launch").fill(chatName);
+  await page.getByRole("button", { name: "+ new chat", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Teams" })).toBeChecked();
+  await page.getByPlaceholder("Chat name").fill(chatName);
   await page.getByRole("button", { name: "Create" }).click();
-  const card = page.getByRole("link", { name: chatName });
-  await expect(card).toBeVisible();
-  await card.click();
+  await expect(page).toHaveURL(/\/chats\/[0-9a-f-]+$/);
+  await expect(page.getByText(chatName, { exact: true })).toBeVisible();
   chatId = new URL(page.url()).pathname.split("/").at(-1)!;
   expect(chatId).toBeTruthy();
 });
@@ -120,7 +121,8 @@ test("auth, person sync, chat creation, and listing", async ({ page }) => {
 test("invite by email and chat membership", async ({ page }) => {
   await login(page, env.REGRESSION_USER_A_EMAIL, env.REGRESSION_USER_A_PASSWORD);
   await page.goto(`/chats/${chatId}`);
-  await page.getByRole("button", { name: "+ Add member" }).click();
+  const membersSection = page.locator("section").filter({ has: page.getByRole("button", { name: "Members", exact: true }) });
+  await membersSection.getByRole("button", { name: "+ add", exact: true }).click();
   await page.getByPlaceholder("person@example.com").fill(env.REGRESSION_USER_B_EMAIL);
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText(`Added ${env.REGRESSION_USER_B_NAME}.`)).toBeVisible();
@@ -131,7 +133,8 @@ test("invite by email and chat membership", async ({ page }) => {
 test("supported agent binding and three-way mode control", async ({ page }) => {
   await login(page, env.REGRESSION_USER_A_EMAIL, env.REGRESSION_USER_A_PASSWORD);
   await page.goto(`/chats/${chatId}`);
-  await page.getByRole("button", { name: "+ add", exact: true }).click();
+  const agentsSection = page.locator("section").filter({ has: page.getByRole("button", { name: "Agents", exact: true }) });
+  await agentsSection.getByRole("button", { name: "+ add", exact: true }).click();
   await expect(page.getByRole("option", { name: "Claude Code" })).toHaveCount(1);
   await expect(page.getByRole("option", { name: "Codex CLI" })).toHaveCount(1);
   await page.getByPlaceholder("e.g. Backend agent").fill(`Regression agent ${runId}`);

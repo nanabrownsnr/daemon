@@ -7,9 +7,11 @@ import { createClient } from "@/lib/supabase/client";
 export default function AgentModal({
   chatId,
   personId,
+  isSolo = false,
 }: {
   chatId: string;
   personId: string;
+  isSolo?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [agentType, setAgentType] = useState("claude_code");
@@ -24,6 +26,19 @@ export default function AgentModal({
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (isSolo) {
+      const { data: existing } = await supabase
+        .from("agent_binding")
+        .select("id")
+        .eq("chat_id", chatId)
+        .ilike("agent_label", agentLabel.trim());
+      if (existing?.length) {
+        setError("Use a unique label for each Solo agent.");
+        setLoading(false);
+        return;
+      }
+    }
 
     const { error } = await supabase.from("agent_binding").insert({
       chat_id: chatId,
@@ -84,8 +99,10 @@ export default function AgentModal({
                   placeholder="e.g. Backend agent"
                   value={agentLabel}
                   onChange={(e) => setAgentLabel(e.target.value)}
+                  required={isSolo}
                   className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm"
                 />
+                {isSolo && <p className="text-xs text-neutral-600 mt-1">Required so you can mention this agent directly.</p>}
               </div>
               <div>
                 <label className="text-xs text-neutral-500 mb-1 block">Project path <span className="text-neutral-600">(optional)</span></label>

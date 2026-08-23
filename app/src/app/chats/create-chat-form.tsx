@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function CreateChatForm({ personId }: { personId: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [chatType] = useState<"team">("team");
+  const [chatType, setChatType] = useState<"team" | "solo">("team");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -71,13 +71,14 @@ export default function CreateChatForm({ personId }: { personId: string }) {
               <fieldset className="space-y-2 text-sm">
                 <legend className="text-xs text-neutral-500">Chat type</legend>
                 <label className="flex items-center gap-2 text-neutral-300">
-                  <input type="radio" name="chat-type" value="team" checked readOnly className="accent-neutral-100" />
-                  Teams
+                  <input type="radio" name="chat-type" value="solo" checked={chatType === "solo"} onChange={() => setChatType("solo")} className="accent-neutral-100" />
+                  Solo <span className="text-xs text-neutral-600">you coordinate your agents</span>
                 </label>
-                <label className="flex cursor-not-allowed items-center gap-2 text-neutral-600" title="Solo multi-agent chats are coming later">
-                  <input type="radio" name="chat-type" value="solo" disabled />
-                  Solo <span className="text-xs">(coming later)</span>
+                <label className="flex items-center gap-2 text-neutral-300">
+                  <input type="radio" name="chat-type" value="team" checked={chatType === "team"} onChange={() => setChatType("team")} className="accent-neutral-100" />
+                  Teams <span className="text-xs text-neutral-600">everyone brings their agent</span>
                 </label>
+
               </fieldset>
 
               <div>

@@ -25,6 +25,8 @@ export default function AgentBindings({ chatId, personId }: Props) {
   const [bindings, setBindings] = useState<AgentBinding[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
   const [onlineBindings, setOnlineBindings] = useState<Set<string>>(new Set());
+  const [workingBindings, setWorkingBindings] = useState<Set<string>>(new Set());
+  const [failedBindings, setFailedBindings] = useState<Set<string>>(new Set());
   const supabase = createClient();
 
   useEffect(() => {
@@ -43,9 +45,24 @@ export default function AgentBindings({ chatId, personId }: Props) {
       channel
         .on("presence", { event: "sync" }, () => {
           const state = channel.presenceState();
+          const statuses = Object.values(state)
+            .flat()
+            .map((entry) => (entry as { status?: string }).status);
           setOnlineBindings((prev) => {
             const next = new Set(prev);
             if (Object.keys(state).length > 0) next.add(b.id);
+            else next.delete(b.id);
+            return next;
+          });
+          setWorkingBindings((prev) => {
+            const next = new Set(prev);
+            if (statuses.includes("working")) next.add(b.id);
+            else next.delete(b.id);
+            return next;
+          });
+          setFailedBindings((prev) => {
+            const next = new Set(prev);
+            if (statuses.includes("error")) next.add(b.id);
             else next.delete(b.id);
             return next;
           });
@@ -119,12 +136,29 @@ export default function AgentBindings({ chatId, personId }: Props) {
       {bindings.map((b) => {
         const isMe = b.person_id === personId;
         const isOnline = onlineBindings.has(b.id);
+        const isWorking = workingBindings.has(b.id);
+        const hasFailed = failedBindings.has(b.id);
+        const statusTitle = isWorking
+          ? "Agent working"
+          : hasFailed
+            ? "Agent failed — check the connector"
+            : isOnline
+              ? "Connector online"
+              : "Connector offline";
+        const statusClass = isWorking
+          ? "bg-yellow-400 animate-pulse"
+          : hasFailed
+            ? "bg-red-500"
+            : isOnline
+              ? "bg-green-500"
+              : "bg-neutral-600";
         return (
           <li key={b.id} className="flex items-center gap-2 text-sm">
             {/* presence indicator — reflects whether the connector is actually running */}
             <span
-              title={isOnline ? "Connector online" : "Connector offline"}
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${isOnline ? "bg-green-500" : "bg-neutral-600"}`}
+              title={statusTitle}
+              aria-label={statusTitle}
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusClass}`}
             />
 
             {/* name */}

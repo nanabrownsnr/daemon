@@ -19,6 +19,24 @@ type Person = {
   display_name: string;
 };
 
+type AgentBinding = {
+  id: string;
+  person_id: string;
+  agent_type: string;
+  agent_label: string | null;
+};
+
+type MentionTarget = {
+  id: string;
+  label: string;
+  kind: "person" | "agent";
+};
+
+const AGENT_TYPE_LABELS: Record<string, string> = {
+  claude_code: "Claude Code",
+  codex_cli: "Codex CLI",
+};
+
 function wordEditDistance(original: string, edited: string) {
   const a = original.trim().split(/\s+/).filter(Boolean);
   const b = edited.trim().split(/\s+/).filter(Boolean);
@@ -44,15 +62,20 @@ export default function ChatMessages({
   personId,
   personNames,
   chatMembers,
+  isSolo,
+  agentBindings,
 }: {
   chatId: string;
   personId: string;
   personNames: Record<string, string>;
   chatMembers: Person[];
+  isSolo: boolean;
+  agentBindings: AgentBinding[];
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [mentionedPersonIds, setMentionedPersonIds] = useState<string[]>([]);
+  const [mentionedAgentBindingIds, setMentionedAgentBindingIds] = useState<string[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -60,12 +83,26 @@ export default function ChatMessages({
   const [editedBody, setEditedBody] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  const filteredMembers = mentionQuery !== null
-    ? chatMembers.filter((m) =>
-        m.display_name.toLowerCase().startsWith(mentionQuery.toLowerCase())
+  const mentionTargets: MentionTarget[] = isSolo
+    ? agentBindings.map((binding) => ({
+        id: binding.id,
+        label: binding.agent_label ?? AGENT_TYPE_LABELS[binding.agent_type] ?? binding.agent_type,
+        kind: "agent" as const,
+      }))
+    : chatMembers.map((person) => ({ id: person.id, label: person.display_name, kind: "person" as const }));
+
+  const filteredTargets = mentionQuery !== null
+    ? mentionTargets.filter((target) =>
+        target.label.toLowerCase().startsWith(mentionQuery.toLowerCase())
       )
     : [];
+
+  const agentNames = Object.fromEntries(agentBindings.map((binding) => [
+    binding.id,
+    binding.agent_label ?? AGENT_TYPE_LABELS[binding.agent_type] ?? binding.agent_type,
+  ]));
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -123,31 +160,33 @@ export default function ChatMessages({
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (mentionQuery === null || filteredMembers.length === 0) return;
+    if (mentionQuery === null || filteredTargets.length === 0) return;
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlightedIndex((i) => (i + 1) % filteredMembers.length);
+      setHighlightedIndex((i) => (i + 1) % filteredTargets.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHighlightedIndex((i) => (i - 1 + filteredMembers.length) % filteredMembers.length);
+      setHighlightedIndex((i) => (i - 1 + filteredTargets.length) % filteredTargets.length);
     } else if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
-      handlePickMention(filteredMembers[highlightedIndex]);
+      handlePickMention(filteredTargets[highlightedIndex]);
     } else if (e.key === "Escape") {
       setMentionQuery(null);
       setMentionStartIndex(null);
     }
   }
 
-  function handlePickMention(person: Person) {
+  function handlePickMention(target: MentionTarget) {
     if (mentionStartIndex === null) return;
     const before = draft.slice(0, mentionStartIndex);
     const after = draft.slice(mentionStartIndex + 1 + (mentionQuery?.length ?? 0));
-    setDraft(`${before}@${person.display_name} ${after}`);
-    setMentionedPersonIds((prev) =>
-      prev.includes(person.id) ? prev : [...prev, person.id]
-    );
+    setDraft(`${before}@${target.label} ${after}`);
+    if (target.kind === "agent") {
+      setMentionedAgentBindingIds((prev) => prev.includes(target.id) ? prev : [...prev, target.id]);
+    } else {
+      setMentionedPersonIds((prev) => prev.includes(target.id) ? prev : [...prev, target.id]);
+    }
     setMentionQuery(null);
     setMentionStartIndex(null);
     inputRef.current?.focus();
@@ -156,11 +195,14 @@ export default function ChatMessages({
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.trim()) return;
+    setSendError(null);
 
     const body = draft;
-    const mentions = mentionedPersonIds;
+    const personMentions = mentionedPersonIds;
+    const agentMentions = mentionedAgentBindingIds;
     setDraft("");
     setMentionedPersonIds([]);
+    setMentionedAgentBindingIds([]);
 
     const { data: msg, error } = await supabase
       .from("message")
@@ -170,14 +212,22 @@ export default function ChatMessages({
 
     if (error || !msg) {
       setDraft(body);
-      setMentionedPersonIds(mentions);
+      setMentionedPersonIds(personMentions);
+      setMentionedAgentBindingIds(agentMentions);
+      setSendError(error?.message ?? "Could not send this message.");
       return;
     }
 
-    if (mentions.length > 0) {
+    if (personMentions.length > 0) {
       await supabase.from("message_mention").insert(
-        mentions.map((pid) => ({ message_id: msg.id, person_id: pid }))
+        personMentions.map((pid) => ({ message_id: msg.id, person_id: pid }))
       );
+    }
+    if (agentMentions.length > 0) {
+      const { error: mentionError } = await supabase.from("message_agent_mention").insert(
+        agentMentions.map((bindingId) => ({ message_id: msg.id, agent_binding_id: bindingId }))
+      );
+      if (mentionError) setSendError(`Message sent, but the agent could not be notified: ${mentionError.message}`);
     }
   }
 
@@ -221,19 +271,20 @@ export default function ChatMessages({
       {/* messages */}
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-2 chat-scroll">
         {messages.map((m) => {
-          const mine = isMyMessage(m);
+          const authoredByMe = isMyMessage(m);
+          const alignRight = authoredByMe && (!isSolo || m.sender_type === "human");
           const senderLabel = m.sender_type === "agent"
-            ? `${personNames[m.sender_person_id] ?? "Unknown"} (agent)`
+            ? agentNames[m.agent_binding_id ?? ""] ?? `${personNames[m.sender_person_id] ?? "Unknown"} (agent)`
             : personNames[m.sender_person_id] ?? "Unknown";
 
           return (
-            <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[70%] space-y-0.5 ${mine ? "items-end" : "items-start"} flex flex-col`}>
-                {!mine && (
+            <div key={m.id} className={`flex ${alignRight ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[70%] space-y-0.5 ${alignRight ? "items-end" : "items-start"} flex flex-col`}>
+                {!alignRight && (
                   <span className="text-xs text-neutral-500 px-1">{senderLabel}</span>
                 )}
                 <div className={`px-3 py-2 rounded-2xl text-sm ${
-                  mine
+                  alignRight
                     ? "bg-neutral-100 text-neutral-900 rounded-br-sm"
                     : "bg-neutral-800 text-neutral-100 rounded-bl-sm"
                 }`}>
@@ -273,9 +324,9 @@ export default function ChatMessages({
                     <span className="text-xs italic">
                       {m.was_edited
                         ? `Edited by ${personNames[m.sender_person_id] ?? "Unknown"}`
-                        : `Sent by ${personNames[m.sender_person_id] ?? "Unknown"}'s agent`}
+                        : `Sent by ${agentNames[m.agent_binding_id ?? ""] ?? `${personNames[m.sender_person_id] ?? "Unknown"}'s agent`}`}
                     </span>
-                    {mine && editingMessageId !== m.id && (
+                    {authoredByMe && editingMessageId !== m.id && (
                       <button
                         type="button"
                         onClick={() => beginEdit(m)}
@@ -299,21 +350,22 @@ export default function ChatMessages({
       </div>
 
       {/* @ mention dropdown */}
-      {mentionQuery !== null && filteredMembers.length > 0 && (
+      {mentionQuery !== null && filteredTargets.length > 0 && (
         <div className="mx-4 mb-1 border border-neutral-700 rounded-lg bg-neutral-900 overflow-hidden shadow-lg">
-          {filteredMembers.map((m, i) => (
+          {filteredTargets.map((target, i) => (
             <button
-              key={m.id}
+              key={`${target.kind}:${target.id}`}
               type="button"
-              onClick={() => handlePickMention(m)}
+              onClick={() => handlePickMention(target)}
               className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${
                 i === highlightedIndex ? "bg-neutral-700" : "hover:bg-neutral-800"
               }`}
             >
               <span className="w-6 h-6 rounded-full bg-neutral-700 flex items-center justify-center text-xs font-medium shrink-0">
-                {m.display_name[0].toUpperCase()}
+                {target.label[0].toUpperCase()}
               </span>
-              {m.display_name}
+              <span>{target.label}</span>
+              <span className="ml-auto text-xs text-neutral-600">{target.kind}</span>
             </button>
           ))}
           <div className="px-3 py-1.5 border-t border-neutral-800">
@@ -324,6 +376,7 @@ export default function ChatMessages({
 
       {/* input */}
       <div className="p-4 pt-2 border-t border-neutral-800">
+        {sendError && <p className="mb-2 text-xs text-red-400">{sendError}</p>}
         <form onSubmit={sendMessage} className="flex gap-2">
           <input
             ref={inputRef}

@@ -3,25 +3,19 @@ import { spawn } from "child_process";
 export const AGENT_TYPES = {
   claude_code: {
     label: "Claude Code",
-    invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn) => {
-      const args = [
+    invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
+      const allowedTools = options.workspaceWrite
+        ? "Read,Grep,Glob,LS,Edit,Write,Bash"
+        : "Read,Grep,Glob,LS";
+      const baseArgs = [
         "--print", prompt,
         "--output-format", "json",
-        "--allowedTools", "Read,Grep,Glob,LS",
-        "--dangerously-skip-permissions"
+        "--allowedTools", allowedTools,
+        "--permission-mode", "dontAsk"
       ];
-      
-      if (sessionId) {
-        args.push("--resume", sessionId);
-        console.log(`[daemon] Resuming specific session ID: ${sessionId}`);
-      } else {
-        args.push("--continue");
-        console.log(`[daemon] No session ID yet, using --continue for latest conversation.`);
-      }
 
-      console.log(`[daemon] Spawning Claude with args:`, args);
-
-      return new Promise((resolve) => {
+      const runClaude = (args, fallbackSessionId) => new Promise((resolve) => {
+        console.log(`[daemon] Spawning Claude with args:`, args);
         const child = spawnProcess("claude", args, {
           cwd: projectDir,
           env: process.env,
@@ -30,6 +24,13 @@ export const AGENT_TYPES = {
 
         let stdout = "";
         let stderr = "";
+        let settled = false;
+
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          resolve(result);
+        };
 
         child.stdout.on("data", (data) => {
           const chunk = data.toString();
@@ -45,7 +46,7 @@ export const AGENT_TYPES = {
 
         child.on("error", (err) => {
           console.error("[daemon] Failed to start Claude process natively:", err);
-          resolve({ response: null, sessionId });
+          finish({ response: null, sessionId: fallbackSessionId, failed: true });
         });
 
         child.on("close", (code) => {
@@ -54,14 +55,23 @@ export const AGENT_TYPES = {
           console.log(`[daemon] Total stderr accumulated: ${stderr.length} characters`);
 
           if (code !== 0) {
-            console.error(`[daemon] FAILURE: Non-zero exit code (${code}). Stderr dump:\n${stderr}`);
-            resolve({ response: null, sessionId });
+            let detail = stderr.trim();
+            if (!detail && stdout.trim()) {
+              try {
+                const errorPayload = JSON.parse(stdout.trim());
+                detail = errorPayload.error?.message ?? errorPayload.error ?? errorPayload.result ?? errorPayload.message ?? "";
+              } catch {
+                detail = "Claude returned a non-JSON error payload.";
+              }
+            }
+            console.error(`[daemon] Claude exited with code ${code}${detail ? `: ${String(detail).slice(0, 500)}` : "."}`);
+            finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
 
           if (!stdout || stdout.trim().length === 0) {
             console.error(`[daemon] FAILURE: Process exited with code 0 but stdout is completely empty.`);
-            resolve({ response: null, sessionId });
+            finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
 
@@ -79,26 +89,43 @@ export const AGENT_TYPES = {
               console.warn("[daemon] Parsed JSON successfully, but 'result.result' field was empty or missing.");
             }
 
-            resolve({
+            finish({
               response: agentResponse,
-              sessionId: result.session_id ?? sessionId,
+              sessionId: result.session_id ?? fallbackSessionId,
+              failed: !agentResponse,
             });
           } catch (parseErr) {
             console.error("[daemon] FAILURE: Failed to parse Claude JSON output.");
             console.error("[daemon] Parse error details:", parseErr.message);
             console.error("[daemon] Raw stdout payload that failed parsing:\n-----\n", stdout, "\n-----");
             
-            resolve({ response: null, sessionId });
+            finish({ response: null, sessionId: fallbackSessionId, failed: true });
           }
         });
 
         child.stdin.end();
       });
+
+      if (sessionId) {
+        console.log(`[daemon] Resuming specific session ID: ${sessionId}`);
+        const resumed = await runClaude([...baseArgs, "--resume", sessionId], sessionId);
+        return { response: resumed.response, sessionId: resumed.sessionId };
+      }
+
+      console.log(`[daemon] No session ID yet, using --continue for latest conversation.`);
+      const continued = await runClaude([...baseArgs, "--continue"], null);
+      if (!continued.failed) {
+        return { response: continued.response, sessionId: continued.sessionId };
+      }
+
+      console.log("[daemon] No resumable Claude conversation found; starting a new one.");
+      const created = await runClaude(baseArgs, null);
+      return { response: created.response, sessionId: created.sessionId };
     },
   },
   codex_cli: {
     label: "Codex CLI",
-    invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn) => {
+    invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const runCodex = (args, fallbackSessionId) => new Promise((resolve) => {
         const child = spawnProcess("codex", args, {
           cwd: projectDir,
@@ -166,11 +193,17 @@ export const AGENT_TYPES = {
         child.stdin.end();
       });
 
-      const baseArgs = [
-        "--ask-for-approval", "never",
-        "--sandbox", "read-only",
-        "exec",
-      ];
+      const baseArgs = options.workspaceWrite
+        // --approve-for-me already selects Codex's workspace-write sandbox;
+        // passing --sandbox with it is rejected by current Codex CLI versions.
+        ? [
+            ...(options.networkAccess
+              ? ["-c", "sandbox_workspace_write.network_access=true"]
+              : []),
+            "--approve-for-me",
+            "exec",
+          ]
+        : ["--sandbox", "read-only", "exec"];
 
       if (sessionId) {
         console.log(`[daemon] Resuming Codex session ID: ${sessionId}`);
