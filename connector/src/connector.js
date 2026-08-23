@@ -218,8 +218,9 @@ From: ${triggerSenderName}
 Instructions:
 1. ${workDirective}
 2. Ground the work in the current project files and the new chat context above. Continue from your existing agent session without re-explaining prior work.
-3. Be concise and concrete. Report what you changed, validation performed, and any blocker. Do not claim work you did not complete.
-4. Do not invent commitments, deadlines, approvals, personal opinions, or decisions. Anything requiring ${personDisplayName}'s authority must be confirmed by ${personDisplayName}.`;
+3. This invocation runs inside a live group collaboration. Complete the requested action in a bounded way, perform appropriate validation, and always return a response to the group; do not wait indefinitely or remain attached to commands after the requested outcome can be reported. If a task needs a persistent server, watcher, or similar process, start it fully detached in the background with stdin closed and stdout/stderr redirected to a project log, verify it, and return while leaving it running. Report useful operational details such as its URL or port, PID when available, log location, and stop command.
+4. Be concise and concrete. Report the outcome, what you changed, validation performed, and any blocker. Do not claim work you did not complete.
+5. Do not invent commitments, deadlines, approvals, personal opinions, or decisions. Anything requiring ${personDisplayName}'s authority must be confirmed by ${personDisplayName}.`;
 }
 
 // ============================================================

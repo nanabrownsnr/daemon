@@ -58,6 +58,11 @@ background task. PostgreSQL atomically claims a batch only when the chat has
 20 unsummarized messages, so concurrent webhook deliveries cannot create
 duplicate summaries.
 
+OpenRouter free-provider failures are retried three times, respecting the
+provider's `Retry-After` delay (capped at 15 seconds). Zero Data Retention
+remains mandatory; the function will not silently route private chat context
+through a provider that retains prompts.
+
 ## 5. Verify
 
 After a chat crosses 20 messages, check:
@@ -67,4 +72,12 @@ select chat_id, summary_version, status, model_used,
        prompt_tokens, completion_tokens, through_created_at, last_error
 from public.chat_context_summary
 order by updated_at desc;
+```
+
+If `status` is `failed`, inspect `last_error`. It records the OpenRouter HTTP
+status, error code, message, and provider metadata. A later message retries the
+same unprocessed batch. After changing the function, redeploy it with:
+
+```bash
+supabase functions deploy summarize-chat
 ```

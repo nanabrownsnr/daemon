@@ -136,6 +136,10 @@ export const AGENT_TYPES = {
         let stdout = "";
         let stderr = "";
         let settled = false;
+        let lineBuffer = "";
+        let newSessionId = fallbackSessionId;
+        let response = null;
+        let parseError = null;
 
         const finish = (result) => {
           if (settled) return;
@@ -143,8 +147,44 @@ export const AGENT_TYPES = {
           resolve(result);
         };
 
+        const finishCompletedTurn = () => {
+          if (!response || settled) return;
+          console.log("[daemon] Codex turn completed; returning response to Groupwork.");
+          // A detached server can keep inherited descriptors open, preventing
+          // Node's `close` event even though Codex has completed its turn.
+          // Disconnect our streams without killing the detached workload.
+          child.stdout.destroy?.();
+          child.stderr.destroy?.();
+          child.stdin.destroy?.();
+          child.unref?.();
+          finish({ response, sessionId: newSessionId, failed: false });
+        };
+
+        const consumeLine = (line) => {
+          if (!line.trim() || settled) return;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "thread.started" && event.thread_id) {
+              newSessionId = event.thread_id;
+            }
+            if (event.type === "item.completed"
+                && event.item?.type === "agent_message"
+                && event.item.text?.trim()) {
+              response = event.item.text.trim();
+            }
+            if (event.type === "turn.completed") finishCompletedTurn();
+          } catch (error) {
+            parseError = error;
+          }
+        };
+
         child.stdout.on("data", (data) => {
-          stdout += data.toString();
+          const chunk = data.toString();
+          stdout += chunk;
+          lineBuffer += chunk;
+          const lines = lineBuffer.split(/\r?\n/);
+          lineBuffer = lines.pop() ?? "";
+          for (const line of lines) consumeLine(line);
         });
 
         child.stderr.on("data", (data) => {
@@ -157,29 +197,15 @@ export const AGENT_TYPES = {
         });
 
         child.on("close", (code) => {
+          consumeLine(lineBuffer);
           if (code !== 0) {
             console.error(`[daemon] Codex exited with code ${code}: ${stderr.trim()}`);
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
 
-          let newSessionId = fallbackSessionId;
-          let response = null;
-
-          try {
-            for (const line of stdout.split(/\r?\n/).filter(Boolean)) {
-              const event = JSON.parse(line);
-              if (event.type === "thread.started" && event.thread_id) {
-                newSessionId = event.thread_id;
-              }
-              if (event.type === "item.completed"
-                  && event.item?.type === "agent_message"
-                  && event.item.text?.trim()) {
-                response = event.item.text.trim();
-              }
-            }
-          } catch (error) {
-            console.error("[daemon] Failed to parse Codex JSONL output:", error.message);
+          if (parseError && !response) {
+            console.error("[daemon] Failed to parse Codex JSONL output:", parseError.message);
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }

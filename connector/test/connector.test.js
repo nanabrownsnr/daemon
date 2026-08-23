@@ -100,6 +100,11 @@ test("Solo prompt keeps the selected agent identity", async () => {
   assert.match(prompt, /private Solo workspace/);
   assert.match(prompt, /explicitly addressed/);
   assert.match(prompt, /inspect and modify files/);
+  assert.match(prompt, /Complete the requested action in a bounded way/);
+  assert.match(prompt, /always return a response to the group/);
+  assert.match(prompt, /fully detached in the background/);
+  assert.match(prompt, /leaving it running/);
+  assert.match(prompt, /log location/);
 });
 
 test("prompt layers a shared summary under the recent raw delta", async () => {
@@ -264,6 +269,40 @@ test("Codex adapter is read-only, resumes sessions, and parses JSONL output", as
   );
   assert.equal(invocation.options.cwd, "/tmp/project");
   assert.deepEqual(result, { response: "Done from Codex", sessionId: "new-thread" });
+});
+
+test("Codex returns a completed turn without waiting for inherited streams to close", async () => {
+  const fakeSpawn = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end() {}, destroy() {} };
+    child.stdout.destroy = () => {};
+    child.stderr.destroy = () => {};
+    child.unref = () => {};
+    queueMicrotask(() => {
+      child.stdout.emit("data", Buffer.from([
+        JSON.stringify({ type: "thread.started", thread_id: "detached-thread" }),
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "Server is running" } }),
+        JSON.stringify({ type: "turn.completed" }),
+      ].join("\n") + "\n"));
+      // Deliberately never emit `close`: this models a detached server that
+      // inherited a descriptor from the completed Codex process.
+    });
+    return child;
+  };
+
+  const result = await AGENT_TYPES.codex_cli.invoke(
+    "Start the server",
+    "/tmp/project",
+    "old-thread",
+    fakeSpawn,
+  );
+
+  assert.deepEqual(result, {
+    response: "Server is running",
+    sessionId: "detached-thread",
+  });
 });
 
 test("Solo adapters receive writable workspace permissions", async () => {

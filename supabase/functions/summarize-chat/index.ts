@@ -36,6 +36,89 @@ function formatMessages(messages: SummaryMessage[]) {
   }).join("\n");
 }
 
+function providerError(status: number, payload: unknown) {
+  const result = payload as {
+    error?: { message?: string; code?: string | number; metadata?: unknown };
+  };
+  const details = [
+    `OpenRouter ${status}`,
+    result?.error?.code != null ? `code ${result.error.code}` : null,
+    result?.error?.message ?? "Unknown provider error",
+    result?.error?.metadata ? JSON.stringify(result.error.metadata) : null,
+  ].filter(Boolean);
+  return details.join(": ").slice(0, 1000);
+}
+
+function retryDelayMs(response: Response, payload: unknown, attempt: number) {
+  const result = payload as {
+    error?: { metadata?: { retry_after_seconds?: number; retry_after_seconds_raw?: number } };
+  };
+  const headerSeconds = Number(response.headers.get("retry-after"));
+  const metadataSeconds = Number(
+    result?.error?.metadata?.retry_after_seconds ??
+      result?.error?.metadata?.retry_after_seconds_raw,
+  );
+  const requestedSeconds = Number.isFinite(headerSeconds) && headerSeconds > 0
+    ? headerSeconds
+    : metadataSeconds;
+  const seconds = Number.isFinite(requestedSeconds) && requestedSeconds > 0
+    ? requestedSeconds
+    : attempt * 2;
+  return Math.min(seconds, 15) * 1000;
+}
+
+async function requestSummary(
+  openRouterKey: string,
+  model: string,
+  referer: string,
+  prompt: string,
+) {
+  let lastError = "OpenRouter request failed";
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": referer,
+        "X-Title": "Groupwork chat summaries",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.1,
+        max_tokens: 1200,
+        provider: { zdr: true, allow_fallbacks: true },
+        messages: [
+          { role: "system", content: "You maintain factual shared project context. Never add information absent from the supplied chat." },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+
+    const raw = await response.text();
+    let completion: Record<string, unknown> = {};
+    try {
+      completion = raw ? JSON.parse(raw) : {};
+    } catch {
+      completion = { error: { message: raw || "Empty provider response" } };
+    }
+
+    if (response.ok) return completion;
+    lastError = providerError(response.status, completion);
+    const retryable = response.status === 408 || response.status === 409 ||
+      response.status === 429 || response.status >= 500;
+    if (!retryable || attempt === 3) break;
+    const delayMs = retryDelayMs(response, completion, attempt);
+    console.warn(
+      `OpenRouter attempt ${attempt} failed (${response.status}); retrying in ${delayMs / 1000}s.`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  throw new Error(lastError);
+}
+
 async function processSummary(
   supabase: ReturnType<typeof createClient>,
   chatId: string,
@@ -64,27 +147,11 @@ Goal and scope; Decisions and constraints; Completed work; Current state; Open t
 Preserve explicit corrections, permissions, unresolved questions, and ownership. Remove superseded details and casual chatter. Do not invent facts.`;
 
   try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openRouterKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": referer,
-        "X-Title": "Groupwork chat summaries",
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.1,
-        max_tokens: 1200,
-        provider: { zdr: true },
-        messages: [
-          { role: "system", content: "You maintain factual shared project context. Never add information absent from the supplied chat." },
-          { role: "user", content: prompt },
-        ],
-      }),
-    });
-    const completion = await response.json();
-    if (!response.ok) throw new Error(completion?.error?.message ?? `OpenRouter returned ${response.status}`);
+    const completion = await requestSummary(openRouterKey, model, referer, prompt) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      model?: string;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
 
     const summary = completion?.choices?.[0]?.message?.content?.trim();
     if (!summary) throw new Error("OpenRouter returned an empty summary");
