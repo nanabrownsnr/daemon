@@ -37,7 +37,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
 | `last_seen` timestamp | Startup catch-up only fetches mentions since last processed. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
-| Connector regression tests | Fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation parsing. Keep these running during MVP development. |
+| Connector regression tests | Ten fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation and continuity. Keep these running during MVP development. |
 | Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is then persisted per binding and resumed exactly. Execution is forced to `read-only` with approvals disabled. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
@@ -75,6 +75,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 12 | ✅ **Topic tagging** | Connector classifies mentions with keyword-based question types and topic tags before routing. | #11 |
 | 13 | **Pairwise relationship trust (chemistry model)** *(deferred until real usage)* | True per-person-pair trust links instead of category-based. Do not design this against synthetic data; revisit once real teams generate meaningful interaction volume. | #11 + real users |
 | 14 | **Connector-advertised project paths** *(deferred to desktop app)* | Path discovery and native folder selection belong in desktop onboarding. Keep the web MVP's free-text project path until then. | #21 |
+| 26 | **Shared chat artifacts / agent handoffs** | Close the context gap between agents working in different local environments. Chat members attach focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—and mentioned agents receive referenced artifacts with the chat prompt. GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; defer MCP until usage proves agents need active discovery/publishing tools. | Codex/Claude cross-platform UAT |
 
 ### P3 — Scale and polish (post-MVP)
 
@@ -115,10 +116,12 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Codex CLI is the second supported runtime | Proves the product loop is platform-neutral while staying focused on two widely used developer agents. |
 | Project directory is the initial agent-context boundary | Claude uses its directory-scoped continuation behavior; Codex first tries `exec resume --last` from that directory. Once attached or created, the connector stores the exact session/thread ID per binding. |
 | Codex connector sessions are read-only | `codex exec --json` supplies a durable thread ID; subsequent mentions resume it. `--sandbox read-only` and `--ask-for-approval never` prevent unattended repository writes or blocked approval prompts. |
+| Shared artifacts solve agent handoff, not generic storage | Do not sync project folders or build a Drive clone. Share small, conversation-scoped work products across otherwise isolated agents; keep committed code and branches in GitHub. |
+| Attachments before MCP | First prove the handoff through chat attachments delivered by the connector. An MCP surface (`list/read/publish_chat_artifact`) is a later interoperability layer, not a prerequisite. |
 
 ## Session Notes — Post-restore fixes
 
-- **Regression testing scope for MVP:** keep the eight fast connector tests and
+- **Regression testing scope for MVP:** keep the ten fast connector tests and
   run them after connector/judgment changes. The Playwright + live Supabase
   suite has been scaffolded and partially exercised, but stabilization is
   deliberately deferred until the UI and workflows stop changing rapidly.
@@ -143,6 +146,14 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
   `--continue` to obtain the active session ID from Claude's JSON response. The
   connector stores that ID per binding and uses `--resume <session_id>` for
   subsequent calls, preserving continuity within the bound project.
+- ✅ **Codex CLI adapter and continuity implemented:** the binding UI exposes
+  Codex CLI. Its first call resumes the latest Codex session scoped to the
+  configured project directory, falling back to a new session only when needed;
+  subsequent calls resume the captured thread ID. Live new/resume commands and
+  JSONL parsing were verified.
+- **Next UAT:** repeat the core two-person workflow with one Codex binding and
+  one Claude Code binding, have them collaborate on a useful GitHub-backed task,
+  and inspect how accurately context and responsibility pass through groupwork.
 - **Judgment UAT prepared:** `docs/judgment-uat-2.md` defines a two-person test
   for promotion, cold-topic isolation, non-self-reinforcement, and demotion.
   `npm run uat:analyze -- "uat 2"` performs a read-only event/decision analysis.
@@ -166,7 +177,11 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 
 - **No org/workspace concept yet** — profile visibility and billing both eventually need "same company" as a boundary, not just "same chat"
 - **Soft-delete vs hard-delete for persons** — judgment history is a long-term asset, shouldn't be casually destroyable
-- **Shared session vs dedicated session for Claude Code** — dedicated session (current) avoids race conditions but doesn't inherit interactive reasoning. Empirical concurrency test (real Anthropic auth) still not run. Low priority until dedicated session is proven insufficient.
+- **Concurrent interactive + groupwork use of the same agent session** — both
+  Claude and Codex intentionally attach to the latest project session on first
+  use, then pin its ID. Test what happens if the developer is actively using
+  that same session while groupwork invokes it; define locking or a clear UI
+  warning if either CLI cannot safely serialize access.
 - **Agent-to-agent loop prevention** — needed once any auto-triggering beyond explicit mention exists
 - **Topic continuity beyond keywords** — current deterministic classifier is
   intentionally lightweight but misses pronoun-heavy follow-ups. Do not add a
