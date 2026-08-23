@@ -9,6 +9,7 @@ import PrivateThread from "./private-thread";
 import ResizableLayout from "./resizable-layout";
 import LogoutButton from "../logout-button";
 import MembersList from "./members-list";
+import CollapsibleSidebarSection from "./collapsible-sidebar-section";
 
 export default async function ChatPage({
   params,
@@ -66,7 +67,6 @@ export default async function ChatPage({
           <span className="font-medium">{chat.name}</span>
         </div>
         <div className="flex items-center gap-3">
-          <InviteModal chatId={chatId} />
           <div className="flex items-center gap-2 text-sm text-neutral-400">
             <span>{myPerson.display_name}</span>
             <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
@@ -88,36 +88,37 @@ export default async function ChatPage({
         sidebar={
           <div className="flex-1 overflow-y-auto sidebar-scroll">
             {/* Agents */}
-            <div className="p-4 border-b border-neutral-800">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-xs text-neutral-500 uppercase tracking-wide">Agents</p>
-                <AgentModal chatId={chatId} personId={myPerson.id} />
-              </div>
+            <CollapsibleSidebarSection
+              title="Agents"
+              action={<AgentModal chatId={chatId} personId={myPerson.id} />}
+            >
               <AgentBindings
                 chatId={chatId}
                 personId={myPerson.id}
               />
-            </div>
+            </CollapsibleSidebarSection>
 
             {/* Members */}
-            <div className="p-4 border-b border-neutral-800">
-              <p className="text-xs text-neutral-500 uppercase tracking-wide mb-3">Members</p>
+            <CollapsibleSidebarSection
+              title="Members"
+              action={chat.created_by === myPerson.id ? <InviteModal chatId={chatId} /> : undefined}
+            >
               <MembersList
                 chatId={chatId}
                 members={chatMembers}
                 myPersonId={myPerson.id}
                 isOwner={chat.created_by === myPerson.id}
               />
-            </div>
+            </CollapsibleSidebarSection>
 
-            {/* Agent drafts */}
-            <div className="p-4">
+            {/* Agent workspace */}
+        
               <PrivateThread
                 chatId={chatId}
                 personId={myPerson.id}
                 agentBindingId={myBinding?.id ?? null}
               />
-            </div>
+            
           </div>
         }
       />

@@ -207,9 +207,9 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
   if (!agentBindingId) return null;
 
   return (
-    <div className="border-t border-neutral-800 pt-4 space-y-3">
+    <section className="space-y-3 p-4">
       <h2 className="text-xs text-neutral-500 uppercase tracking-wide flex items-center gap-2">
-        Agent drafts
+        Agent Workspace
         {drafts.length > 0 && (
           <span className="bg-neutral-700 text-neutral-200 text-xs px-1.5 py-0.5 rounded-full">
             {drafts.length}
@@ -294,6 +294,6 @@ export default function PrivateThread({ chatId, personId, agentBindingId }: Prop
           </div>
         ))}
       </div>
-    </div>
+    </section>
   );
 }

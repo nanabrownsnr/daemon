@@ -59,17 +59,16 @@ export default async function ChatsPage() {
       <div className="max-w-2xl mx-auto space-y-10">
         <header className="flex items-start justify-between gap-6">
           <div>
-            <p className="text-xs font-medium tracking-[0.18em] text-neutral-500">groupwork</p>
+          <Link href="/chats" className="inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300">
+            groupwork
+          </Link>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your conversations</h1>
             <p className="mt-1 text-sm text-neutral-500">Signed in as {person.display_name}</p>
           </div>
           <div className="flex items-center gap-3 pt-1">
-            <Link
-              href="/connector"
-              className="text-xs text-neutral-500 transition-colors hover:text-neutral-300"
-            >
-              connector setup
-            </Link>
+          <Link href="/connector" className="inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300">
+          connector-setup
+          </Link>
             <LogoutButton />
           </div>
         </header>

@@ -1,6 +1,14 @@
 "use client";
 
-export default function LoginCommand({ className }: { className: string }) {
-  const origin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
-  return <pre suppressHydrationWarning className={className}>groupwork-connect login --app-url {origin}</pre>;
+import { useSyncExternalStore } from "react";
+import CopyCommand from "./copy-command";
+
+export default function LoginCommand() {
+  const origin = useSyncExternalStore(
+    () => () => undefined,
+    () => window.location.origin,
+    () => "http://localhost:3000",
+  );
+
+  return <CopyCommand command={`groupwork-connect login --app-url ${origin}`} />;
 }

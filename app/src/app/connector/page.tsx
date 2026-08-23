@@ -1,8 +1,7 @@
 import Link from "next/link";
 import LoginCommand from "./login-command";
 import CompleteConnectorOnboarding from "./complete-connector-onboarding";
-
-const commandClass = "mt-2 overflow-x-auto rounded border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-xs text-neutral-300";
+import CopyCommand from "./copy-command";
 
 export default function ConnectorSetupPage() {
   return (
@@ -10,7 +9,9 @@ export default function ConnectorSetupPage() {
       <CompleteConnectorOnboarding />
       <div className="mx-auto max-w-xl space-y-8">
         <header className="space-y-2">
-          <p className="text-sm text-neutral-500">groupwork</p>
+          <Link href="/chats" className="inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300">
+            groupwork
+          </Link>
           <h1 className="text-2xl font-semibold">connect your agent</h1>
           <p className="text-sm leading-6 text-neutral-400">
             The connector runs on your computer and lets Claude Code or Codex CLI respond when you are mentioned in a groupwork chat.
@@ -21,12 +22,12 @@ export default function ConnectorSetupPage() {
           <li>
             <p className="font-medium">1. Install Node.js 20 or newer</p>
             <p className="mt-1 text-neutral-500">Check your version before continuing.</p>
-            <pre className={commandClass}>node --version</pre>
+            <CopyCommand command="node --version" />
           </li>
           <li>
             <p className="font-medium">2. Install and authenticate your agent</p>
-            <pre className={commandClass}>npm install -g @anthropic-ai/claude-code</pre>
-            <pre className={commandClass}>npm install -g @openai/codex</pre>
+            <CopyCommand command="npm install -g @anthropic-ai/claude-code" />
+            <CopyCommand command="npm install -g @openai/codex" />
             <p className="mt-2 text-neutral-500">You only need the agent you plan to use.</p>
           </li>
           <li>
@@ -40,22 +41,50 @@ export default function ConnectorSetupPage() {
               Download connector 0.1.0
             </a>
             <p className="mt-3 text-neutral-500">Then open a terminal in the folder where you downloaded it and run:</p>
-            <pre className={commandClass}>npm install -g ./groupwork-connector-0.1.0.tgz</pre>
+            <CopyCommand command="npm install -g ./groupwork-connector-0.1.0.tgz" />
             <p className="mt-2 text-neutral-500">
               For example, if it is in your Downloads folder: <code className="text-neutral-300">cd ~/Downloads</code>
             </p>
           </li>
           <li>
             <p className="font-medium">4. Authorize this computer</p>
-            <LoginCommand className={commandClass} />
+            <LoginCommand />
             <p className="mt-2 text-neutral-500">Your browser opens for approval. The connector never stores your groupwork password.</p>
           </li>
           <li>
             <p className="font-medium">5. Check the setup and start</p>
-            <pre className={commandClass}>groupwork-connect doctor{"\n"}groupwork-connect start</pre>
+            <CopyCommand command="groupwork-connect doctor" />
+            <CopyCommand command="groupwork-connect start" />
             <p className="mt-2 text-neutral-500">Keep this terminal open during the private beta. Your agent’s presence dot should turn green.</p>
           </li>
         </ol>
+
+        <section className="space-y-4 border-t border-neutral-800 pt-8 text-sm">
+          <div>
+            <h2 className="font-medium">connector commands</h2>
+            <p className="mt-1 text-neutral-500">Use these after your connector is installed and authorized.</p>
+          </div>
+          <div>
+            <p className="text-neutral-400">Start listening for mentions</p>
+            <CopyCommand command="groupwork-connect start" />
+          </div>
+          <div>
+            <p className="text-neutral-400">Pause mention processing</p>
+            <CopyCommand command="groupwork-connect pause" />
+          </div>
+          <div>
+            <p className="text-neutral-400">Resume mention processing</p>
+            <CopyCommand command="groupwork-connect resume" />
+          </div>
+          <div>
+            <p className="text-neutral-400">Check your installation and bindings</p>
+            <CopyCommand command="groupwork-connect doctor" />
+          </div>
+          <div>
+            <p className="text-neutral-400">Remove this computer&apos;s saved login</p>
+            <CopyCommand command="groupwork-connect logout" />
+          </div>
+        </section>
 
         <footer className="border-t border-neutral-800 pt-6 text-sm text-neutral-500">
           Add your agent and its local project path inside the chat before running doctor. <Link href="/chats" className="text-neutral-300 hover:text-white">Return to chats</Link>.

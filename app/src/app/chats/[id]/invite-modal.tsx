@@ -40,9 +40,9 @@ export default function InviteModal({ chatId }: { chatId: string }) {
     <>
       <button
         onClick={() => { setOpen(true); setStatus(null); }}
-        className="text-xs px-3 py-1.5 rounded border border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200 transition-colors"
+        className="text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
       >
-        + Add member
+        + add
       </button>
 
       {open && (
