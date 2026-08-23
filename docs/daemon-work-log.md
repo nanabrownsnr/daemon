@@ -91,7 +91,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 20 | **Agent-to-agent loop circuit breaker** | Once auto-triggering exists beyond explicit mention, need a max-hop-count or "agents can't mention each other without a human-initiated thread" rule. |
 | 21 | **Desktop app / native file picker** | For smoother connector onboarding (select folder, pick agent type, done). Deferred until loop is proven. |
 | 22 | ✅ **Second agent adapter: Codex CLI** | Codex CLI now shares the connector, prompt, routing, session persistence, presence, and Judgment pipeline with Claude Code. Goose, Hermes, Ollama, and others remain future adapter work. |
-| 23 | **Multi-agent per person per chat** | Schema unique constraint (person, chat) currently enforces one binding. Relax when multi-agent use cases are proven. |
+| 23 | **Solo multi-agent chats** | Chat creation now distinguishes the product boundary: Teams is enabled and enforces one agent per person per chat; Solo is visible but disabled. Later, Solo can support multiple explicitly addressed agents with separate sessions and workspaces without weakening the core team use case. |
 | 24 | **UI redesign** | Current UI is functional but unstyled. Redesign is a pure CSS/className change — no logic touch — estimated 1-2 days with a clear design direction. |
 | 25 | **Rename product** | "dæmon" → something simpler floated. Deferred. |
 | 26 | **Shared chat artifacts / agent handoffs** | Deferred until after the MVP and Codex/Claude cross-platform UAT. Eventually share focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—while GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; consider MCP later. |

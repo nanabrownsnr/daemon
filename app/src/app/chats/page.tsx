@@ -73,16 +73,15 @@ export default async function ChatsPage() {
           </div>
         </header>
 
-        <CreateChatForm personId={person.id} />
-
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-medium tracking-[0.16em] text-neutral-500">chats({chats.length})</h2>
+            <CreateChatForm personId={person.id} />
           </div>
           {chats.length === 0 && (
             <div className="rounded-2xl border border-dashed border-neutral-800 px-6 py-12 text-center">
               <p className="text-sm font-medium text-neutral-300">No conversations yet</p>
-              <p className="mt-1 text-sm text-neutral-600">Create one above and invite your team.</p>
+              <p className="mt-1 text-sm text-neutral-600">Create a new chat and invite your team.</p>
             </div>
           )}
           <ul className="space-y-2">

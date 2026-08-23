@@ -38,7 +38,7 @@ export default async function ChatPage({
   }
 
   const { data: chat } = await supabase
-    .from("chat").select("id, name, created_by").eq("id", chatId).single();
+    .from("chat").select("id, name, created_by, is_group").eq("id", chatId).single();
   if (!chat) notFound();
 
   const { data: members } = await supabase
@@ -48,7 +48,9 @@ export default async function ChatPage({
 
   const { data: myBinding } = await supabase
     .from("agent_binding").select("id")
-    .eq("chat_id", chatId).eq("person_id", myPerson.id).single();
+    .eq("chat_id", chatId).eq("person_id", myPerson.id)
+    .limit(1)
+    .maybeSingle();
 
   const chatMembers = (members ?? []).flatMap((membership) => {
     const related = Array.isArray(membership.person) ? membership.person[0] : membership.person;
@@ -90,7 +92,7 @@ export default async function ChatPage({
             {/* Agents */}
             <CollapsibleSidebarSection
               title="Agents"
-              action={<AgentModal chatId={chatId} personId={myPerson.id} />}
+              action={!chat.is_group || !myBinding ? <AgentModal chatId={chatId} personId={myPerson.id} /> : undefined}
             >
               <AgentBindings
                 chatId={chatId}
