@@ -1,3 +1,4 @@
 /connector/node_modules/
 /connector/.env
+/connector/*.tgz
 /schema

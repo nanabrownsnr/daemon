@@ -3,28 +3,15 @@
 // Each binding has its own agent_type and project_path stored in the database.
 // The connector pulls that info on startup — no per-binding env config needed.
 
-import { createClient } from "@supabase/supabase-js";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import dotenv from "dotenv";
 import { AGENT_TYPES } from "./agent-types.js";
-
-dotenv.config();
+import { getAuthenticatedClient } from "./auth.js";
 
 // ============================================================
 // Config — minimal, no per-binding values here
 // ============================================================
-
-const SUPABASE_URL = process.env.DAEMON_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.DAEMON_SUPABASE_ANON_KEY;
-const EMAIL = process.env.DAEMON_EMAIL;
-const PASSWORD = process.env.DAEMON_PASSWORD;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !EMAIL || !PASSWORD) {
-  console.error("[daemon] Missing required env vars. Copy .env.example to .env and fill in.");
-  process.exit(1);
-}
 
 // ============================================================
 // Local state helpers
@@ -88,18 +75,6 @@ function markLastSeen(personId) {
 // Auth
 // ============================================================
 
-async function getAuthenticatedClient() {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data, error } = await supabase.auth.signInWithPassword({ email: EMAIL, password: PASSWORD });
-  if (error || !data.user) {
-    console.error("[daemon] Auth failed:", error?.message);
-    process.exit(1);
-  }
-  console.log("[daemon] Authenticated as", data.user.email);
-  return supabase;
-}
-
-// ============================================================
 // Invoke agent — generic, pulls type and path from binding
 // ============================================================
 
@@ -304,9 +279,16 @@ async function handleMention(supabase, mention, person, bindingsByChat, forceAdv
 export async function start() {
   console.log("[daemon] Starting connector...");
 
-  const supabase = await getAuthenticatedClient();
+  let supabase;
+  try {
+    supabase = await getAuthenticatedClient();
+  } catch (error) {
+    console.error(`[daemon] ${error.message}`);
+    return;
+  }
 
   const { data: { user } } = await supabase.auth.getUser();
+  console.log("[daemon] Authenticated as", user.email);
   const { data: person } = await supabase
     .from("person")
     .select("id, display_name")

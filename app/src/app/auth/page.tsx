@@ -15,6 +15,12 @@ export default function AuthPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  function destinationAfterLogin(needsConnectorOnboarding = false) {
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next?.startsWith("/") && !next.startsWith("//")) return next;
+    return needsConnectorOnboarding ? "/connector" : "/chats";
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (loading) return;
@@ -38,25 +44,28 @@ export default function AuthPage() {
         options: {
           // this is what fixes the email-fallback issue we logged earlier —
           // the auth->person trigger reads this metadata directly
-          data: { display_name: normalizedDisplayName },
+          data: {
+            display_name: normalizedDisplayName,
+            needs_connector_onboarding: true,
+          },
         },
       });
       if (error) setError(error.message);
       else if (data.session) {
-        router.replace("/chats");
+        router.replace(destinationAfterLogin(true));
         router.refresh();
       } else {
         setStatus("Account created. Check your email to confirm your address, then log in.");
         setMode("login");
       }
     } else {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
       });
       if (error) setError(error.message);
       else {
-        router.replace("/chats");
+        router.replace(destinationAfterLogin(data.user?.user_metadata.needs_connector_onboarding === true));
         router.refresh();
       }
     }

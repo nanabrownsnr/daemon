@@ -39,6 +39,9 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
 | Connector regression tests | Ten fast Node tests cover classification, prompt construction, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation and continuity. Keep these running during MVP development. |
 | Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is then persisted per binding and resumed exactly. Execution is forced to `read-only` with approvals disabled. |
+| Connector browser authorization | ✅ `groupwork-connect login` opens the signed-in web app for explicit loopback authorization. The connector stores refreshable session tokens with `0600` permissions and never receives or stores the user's password. Logout removes the local session. |
+| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. Both `groupwork-connect` and legacy `daemon-connect` bins work. The website `/connector` page provides download and setup instructions. Public npm publication remains gated on the final package name, deployed app URL, and a second physical-machine UAT. |
+| Connector doctor | ✅ Checks saved login, Supabase identity, bindings, required Claude/Codex installation, local project paths, and website reachability before start. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
 | Auth/session hardening | Next.js 16 `proxy.ts` refreshes Supabase sessions and protects `/chats`; authenticated users are redirected away from `/auth`. Signup normalizes input and handles both immediate sessions and future email-confirmation mode. |
@@ -75,7 +78,6 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 12 | ✅ **Topic tagging** | Connector classifies mentions with keyword-based question types and topic tags before routing. | #11 |
 | 13 | **Pairwise relationship trust (chemistry model)** *(deferred until real usage)* | True per-person-pair trust links instead of category-based. Do not design this against synthetic data; revisit once real teams generate meaningful interaction volume. | #11 + real users |
 | 14 | **Connector-advertised project paths** *(deferred to desktop app)* | Path discovery and native folder selection belong in desktop onboarding. Keep the web MVP's free-text project path until then. | #21 |
-| 26 | **Shared chat artifacts / agent handoffs** | Close the context gap between agents working in different local environments. Chat members attach focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—and mentioned agents receive referenced artifacts with the chat prompt. GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; defer MCP until usage proves agents need active discovery/publishing tools. | Codex/Claude cross-platform UAT |
 
 ### P3 — Scale and polish (post-MVP)
 
@@ -92,6 +94,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 23 | **Multi-agent per person per chat** | Schema unique constraint (person, chat) currently enforces one binding. Relax when multi-agent use cases are proven. |
 | 24 | **UI redesign** | Current UI is functional but unstyled. Redesign is a pure CSS/className change — no logic touch — estimated 1-2 days with a clear design direction. |
 | 25 | **Rename product** | "dæmon" → something simpler floated. Deferred. |
+| 26 | **Shared chat artifacts / agent handoffs** | Deferred until after the MVP and Codex/Claude cross-platform UAT. Eventually share focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—while GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; consider MCP later. |
 
 ---
 
@@ -118,6 +121,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Codex connector sessions are read-only | `codex exec --json` supplies a durable thread ID; subsequent mentions resume it. `--sandbox read-only` and `--ask-for-approval never` prevent unattended repository writes or blocked approval prompts. |
 | Shared artifacts solve agent handoff, not generic storage | Do not sync project folders or build a Drive clone. Share small, conversation-scoped work products across otherwise isolated agents; keep committed code and branches in GitHub. |
 | Attachments before MCP | First prove the handoff through chat attachments delivered by the connector. An MCP surface (`list/read/publish_chat_artifact`) is a later interoperability layer, not a prerequisite. |
+| Browser approval instead of connector passwords | Distribution must never require copying a groupwork password into `.env`. A short-lived loopback authorization transfers the existing browser session to the explicitly approved local CLI and stores it with restricted permissions. |
 
 ## Session Notes — Post-restore fixes
 
@@ -154,6 +158,13 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - **Next UAT:** repeat the core two-person workflow with one Codex binding and
   one Claude Code binding, have them collaborate on a useful GitHub-backed task,
   and inspect how accurately context and responsibility pass through groupwork.
+- ✅ **Private-beta connector distribution prepared:** password-based `.env`
+  login was removed; browser authorization, logout, doctor, runtime-only npm
+  packaging, isolated installation, website setup/authorization routes, and a
+  downloadable tarball are implemented. Protocol smoke testing confirmed token
+  validation and `0600` local session permissions. Before npm publication, run
+  the tarball on another person's physical computer and choose/claim the final
+  registry package name.
 - **Judgment UAT prepared:** `docs/judgment-uat-2.md` defines a two-person test
   for promotion, cold-topic isolation, non-self-reinforcement, and demotion.
   `npm run uat:analyze -- "uat 2"` performs a read-only event/decision analysis.

@@ -3,14 +3,23 @@
   "version": "0.1.0",
   "description": "Local bridge connecting Claude Code or Codex CLI to a dæmon chat",
   "type": "module",
+  "files": [
+    "src",
+    "README.md"
+  ],
   "bin": {
+    "groupwork-connect": "./src/cli.js",
     "daemon-connect": "./src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
     "start": "node src/cli.js start",
     "dev": "node --watch src/cli.js start",
     "test": "node --test test/*.test.js",
-    "uat:analyze": "node scripts/analyze-judgment-uat.js"
+    "uat:analyze": "node scripts/analyze-judgment-uat.js",
+    "prepack": "npm test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

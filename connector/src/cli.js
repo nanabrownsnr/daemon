@@ -1,30 +1,55 @@
 #!/usr/bin/env node
 import { start, pause, resume } from "./connector.js";
+import { login, logout } from "./auth.js";
+import { doctor } from "./doctor.js";
 
 const command = process.argv[2];
+const appUrlIndex = process.argv.indexOf("--app-url");
+const appUrl = appUrlIndex >= 0 ? process.argv[appUrlIndex + 1] : undefined;
 
-switch (command) {
-  case "start":
-    start();
-    break;
-  case "pause":
-    pause();
-    break;
-  case "resume":
-    resume();
-    break;
-  default:
-    console.log(`
-dæmon connector
+async function main() {
+  switch (command) {
+    case "login": {
+      const user = await login({ appUrl });
+      console.log(`[daemon] Authorized as ${user.email}.`);
+      break;
+    }
+    case "logout":
+      await logout();
+      console.log("[daemon] Logged out on this computer.");
+      break;
+    case "doctor": {
+      const ok = await doctor();
+      if (!ok) process.exitCode = 1;
+      break;
+    }
+    case "start":
+      await start();
+      break;
+    case "pause":
+      pause();
+      break;
+    case "resume":
+      resume();
+      break;
+    default:
+      console.log(`
+groupwork connector
 
 Usage:
-  daemon-connect start    Start the connector
-  daemon-connect pause    Pause — mentions received but not processed
-  daemon-connect resume   Resume processing mentions
+  groupwork-connect login [--app-url URL]  Authorize this computer in your browser
+  groupwork-connect doctor  Check login, agents, bindings, and project paths
+  groupwork-connect start   Start the connector
+  groupwork-connect pause   Pause mention processing
+  groupwork-connect resume  Resume mention processing
+  groupwork-connect logout  Remove the saved login from this computer
 
-Config:
-  Copy .env.example to .env and fill in your Supabase credentials.
-  Make sure your agent CLI (claude, codex, goose) is authenticated
-  on this machine before running start.
-    `);
+Run login first. Your groupwork password is never stored by the connector.
+      `);
+  }
 }
+
+main().catch((error) => {
+  console.error(`[daemon] ${error.message}`);
+  process.exitCode = 1;
+});

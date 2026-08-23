@@ -9,7 +9,8 @@ directly.
 
 - `app/` — Next.js web application for authentication, chats, mentions, agent
   bindings, Advice/Act controls, private drafts, and presence.
-- `connector/` — local Node.js relay that authenticates with Supabase, listens
+- `connector/` — packageable local Node.js relay that is authorized through the
+  signed-in web app, listens
   for mentions, invokes the selected agent in the configured project, and routes the
   response.
 - `docs/daemon-work-log.md` — current product status, decisions, and backlog.
@@ -40,8 +41,10 @@ npm install
 node src/cli.js start
 ```
 
-Configure each package from its `.env.example` file. The selected agent CLI must
-be installed and authenticated on the machine running the connector.
+The selected agent CLI must be installed and authenticated on the machine
+running the connector. Normal connector installations need no `.env` file and
+never store the user's groupwork password; run `groupwork-connect login` to
+authorize the computer through the web app.
 
 The live Supabase project currently owns the database schema and policies; this
 repository does not maintain local migration files.

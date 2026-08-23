@@ -26,7 +26,13 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && pathname === "/auth") {
-    return NextResponse.redirect(new URL("/chats", request.url));
+    const next = request.nextUrl.searchParams.get("next");
+    const destination = next?.startsWith("/") && !next.startsWith("//")
+      ? next
+      : user.user_metadata.needs_connector_onboarding === true
+        ? "/connector"
+        : "/chats";
+    return NextResponse.redirect(new URL(destination, request.url));
   }
 
   return response;

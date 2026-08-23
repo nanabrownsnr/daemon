@@ -59,11 +59,17 @@ export default async function ChatsPage() {
       <div className="max-w-2xl mx-auto space-y-10">
         <header className="flex items-start justify-between gap-6">
           <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-neutral-500">groupwork</p>
+            <p className="text-xs font-medium tracking-[0.18em] text-neutral-500">groupwork</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your conversations</h1>
             <p className="mt-1 text-sm text-neutral-500">Signed in as {person.display_name}</p>
           </div>
-          <div className="pt-1">
+          <div className="flex items-center gap-3 pt-1">
+            <Link
+              href="/connector"
+              className="text-xs text-neutral-500 transition-colors hover:text-neutral-300"
+            >
+              connector setup
+            </Link>
             <LogoutButton />
           </div>
         </header>
@@ -72,8 +78,7 @@ export default async function ChatsPage() {
 
         <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-neutral-500">Chats</h2>
-            <span className="text-xs text-neutral-600">{chats.length}</span>
+            <h2 className="text-xs font-medium tracking-[0.16em] text-neutral-500">chats({chats.length})</h2>
           </div>
           {chats.length === 0 && (
             <div className="rounded-2xl border border-dashed border-neutral-800 px-6 py-12 text-center">
