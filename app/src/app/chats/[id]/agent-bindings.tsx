@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type AgentBinding = {
@@ -27,7 +27,10 @@ export default function AgentBindings({ chatId, personId }: Props) {
   const [onlineBindings, setOnlineBindings] = useState<Set<string>>(new Set());
   const [workingBindings, setWorkingBindings] = useState<Set<string>>(new Set());
   const [failedBindings, setFailedBindings] = useState<Set<string>>(new Set());
-  const supabase = createClient();
+  // Keep one browser client for the component lifetime. Recreating it during
+  // presence-driven renders tears down and resubscribes every binding channel,
+  // which can make an online or working agent briefly appear offline.
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     supabase
