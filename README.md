@@ -1,6 +1,6 @@
-# Dæmon
+# groupwork
 
-Dæmon is an AI-native team chat that connects a developer's local coding agent
+groupwork is an AI-native team chat that connects a developer's local coding agent
 to conversations with their team. A person can bind Claude Code or Codex CLI to a chat,
 receive agent-generated drafts privately, or allow trusted responses to post
 directly.
@@ -13,7 +13,7 @@ directly.
   signed-in web app, listens
   for mentions, invokes the selected agent in the configured project, and routes the
   response.
-- `docs/daemon-work-log.md` — current product status, decisions, and backlog.
+- `docs/groupwork-work-log.md` — current product status, decisions, and backlog.
 - Supabase provides Postgres, Auth, Realtime, and Presence.
 
 ## Current flow
@@ -21,9 +21,11 @@ directly.
 1. Create an account and chat in the web application.
 2. Add a Claude Code or Codex CLI binding with a local project path.
 3. Start the local connector using the same account.
-4. A teammate mentions the person in chat.
+4. A Team mention creates an execution request for the agent owner to Accept or
+   Reject; a Solo mention is immediately authorized by its owner.
 5. The connector invokes the selected agent with recent chat and project context.
-6. Advice mode creates a private draft; Act mode posts the response directly.
+6. Advice mode creates a private draft; Act mode posts the response directly;
+   Judgment chooses between them from learned topic trust.
 
 ## Development
 
@@ -46,8 +48,9 @@ running the connector. Normal connector installations need no `.env` file and
 never store the user's groupwork password; run `groupwork-connect login` to
 authorize the computer through the web app.
 
-The live Supabase project currently owns the database schema and policies; this
-repository does not maintain local migration files.
+The live Supabase project currently owns the baseline database schema and
+policies. Incremental SQL runbooks for current features live in `docs/sql/` and
+must be applied in Supabase before deploying matching application changes.
 
 ## Regression tests
 

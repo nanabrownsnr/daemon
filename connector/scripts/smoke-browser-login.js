@@ -7,14 +7,14 @@ import { createClient } from "@supabase/supabase-js";
 
 dotenv.config({ path: new URL("../.env", import.meta.url) });
 
-const email = process.env.DAEMON_EMAIL;
-const password = process.env.DAEMON_PASSWORD;
-const supabaseUrl = process.env.DAEMON_SUPABASE_URL;
-const supabaseKey = process.env.DAEMON_SUPABASE_ANON_KEY;
-const configDir = process.env.DAEMON_CONFIG_DIR;
+const email = process.env.GROUPWORK_EMAIL;
+const password = process.env.GROUPWORK_PASSWORD;
+const supabaseUrl = process.env.GROUPWORK_SUPABASE_URL;
+const supabaseKey = process.env.GROUPWORK_SUPABASE_ANON_KEY;
+const configDir = process.env.GROUPWORK_CONFIG_DIR;
 
 if (!email || !password || !supabaseUrl || !supabaseKey || !configDir) {
-  throw new Error("Smoke test requires the existing local connector .env and DAEMON_CONFIG_DIR.");
+  throw new Error("Smoke test requires the existing local connector .env and GROUPWORK_CONFIG_DIR.");
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
@@ -23,7 +23,7 @@ if (error || !data.session) throw error ?? new Error("Could not create smoke-tes
 
 const child = spawn(process.execPath, ["src/cli.js", "login"], {
   cwd: new URL("..", import.meta.url),
-  env: { ...process.env, DAEMON_CONFIG_DIR: configDir, DAEMON_APP_URL: "http://localhost:3000" },
+  env: { ...process.env, GROUPWORK_CONFIG_DIR: configDir, GROUPWORK_APP_URL: "http://localhost:3000" },
   stdio: ["ignore", "pipe", "pipe"],
 });
 

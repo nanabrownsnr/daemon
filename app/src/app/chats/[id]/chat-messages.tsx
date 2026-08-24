@@ -204,11 +204,12 @@ export default function ChatMessages({
     setMentionedPersonIds([]);
     setMentionedAgentBindingIds([]);
 
-    const { data: msg, error } = await supabase
-      .from("message")
-      .insert({ chat_id: chatId, sender_person_id: personId, sender_type: "human", body })
-      .select()
-      .single();
+    const { data: msg, error } = await supabase.rpc("send_message_with_mentions", {
+      p_chat_id: chatId,
+      p_body: body,
+      p_person_mentions: personMentions,
+      p_agent_mentions: agentMentions,
+    });
 
     if (error || !msg) {
       setDraft(body);
@@ -218,17 +219,6 @@ export default function ChatMessages({
       return;
     }
 
-    if (personMentions.length > 0) {
-      await supabase.from("message_mention").insert(
-        personMentions.map((pid) => ({ message_id: msg.id, person_id: pid }))
-      );
-    }
-    if (agentMentions.length > 0) {
-      const { error: mentionError } = await supabase.from("message_agent_mention").insert(
-        agentMentions.map((bindingId) => ({ message_id: msg.id, agent_binding_id: bindingId }))
-      );
-      if (mentionError) setSendError(`Message sent, but the agent could not be notified: ${mentionError.message}`);
-    }
   }
 
   function beginEdit(message: Message) {

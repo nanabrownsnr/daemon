@@ -15,7 +15,12 @@ export default function ResizableLayout({
 
   // restore saved width on mount
   useEffect(() => {
-    const saved = localStorage.getItem("daemon-sidebar-width");
+    const saved = localStorage.getItem("groupwork-sidebar-width")
+      ?? localStorage.getItem("daemon-sidebar-width");
+    if (saved) {
+      localStorage.setItem("groupwork-sidebar-width", saved);
+      localStorage.removeItem("daemon-sidebar-width");
+    }
     // Restoring a browser preference after hydration intentionally requires a
     // one-time state update; the server cannot read localStorage.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -40,7 +45,7 @@ export default function ResizableLayout({
 
     function handleMouseUp() {
       setDragging(false);
-      localStorage.setItem("daemon-sidebar-width", String(sidebarWidth));
+      localStorage.setItem("groupwork-sidebar-width", String(sidebarWidth));
     }
 
     window.addEventListener("mousemove", handleMouseMove);

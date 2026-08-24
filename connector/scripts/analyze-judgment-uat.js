@@ -4,10 +4,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const chatName = process.argv.slice(2).join(" ") || "uat 2";
-const url = process.env.DAEMON_SUPABASE_URL;
-const key = process.env.DAEMON_SUPABASE_ANON_KEY;
-const email = process.env.DAEMON_EMAIL;
-const password = process.env.DAEMON_PASSWORD;
+const url = process.env.GROUPWORK_SUPABASE_URL;
+const key = process.env.GROUPWORK_SUPABASE_ANON_KEY;
+const email = process.env.GROUPWORK_EMAIL;
+const password = process.env.GROUPWORK_PASSWORD;
 
 if (!url || !key || !email || !password) {
   throw new Error("Connector Supabase credentials are missing from connector/.env");

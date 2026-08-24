@@ -112,7 +112,7 @@ export default function AgentBindings({ chatId, personId }: Props) {
     if (error) {
       // revert on failure
       setBindings((prev) => prev.map((b) => b.id === binding.id ? { ...b, mode: binding.mode } : b));
-      console.error("[daemon] Failed to update mode:", error.message);
+      console.error("[groupwork] Failed to update mode:", error.message);
     }
     setLoading(null);
   }

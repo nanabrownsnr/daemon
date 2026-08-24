@@ -41,7 +41,7 @@ export async function doctor() {
       bindings = data ?? [];
       results.push(report(bindings.length > 0, `${bindings.length} agent binding(s) found`));
     } catch (error) {
-      results.push(report(false, `Groupwork connection: ${error.message}`));
+      results.push(report(false, `groupwork connection: ${error.message}`));
     }
   }
 

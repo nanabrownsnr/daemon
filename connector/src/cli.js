@@ -11,12 +11,12 @@ async function main() {
   switch (command) {
     case "login": {
       const user = await login({ appUrl });
-      console.log(`[daemon] Authorized as ${user.email}.`);
+      console.log(`[groupwork] Authorized as ${user.email}.`);
       break;
     }
     case "logout":
       await logout();
-      console.log("[daemon] Logged out on this computer.");
+      console.log("[groupwork] Logged out on this computer.");
       break;
     case "doctor": {
       const ok = await doctor();
@@ -50,6 +50,6 @@ Run login first. Your groupwork password is never stored by the connector.
 }
 
 main().catch((error) => {
-  console.error(`[daemon] ${error.message}`);
+  console.error(`[groupwork] ${error.message}`);
   process.exitCode = 1;
 });

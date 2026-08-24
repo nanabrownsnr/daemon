@@ -1,13 +1,13 @@
-// dæmon connector — multi-binding relay
+// groupwork connector — multi-binding relay
 // One process manages ALL agent bindings for this person across all chats.
 // Each binding has its own agent_type and project_path stored in the database.
 // The connector pulls that info on startup — no per-binding env config needed.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 import { AGENT_TYPES } from "./agent-types.js";
 import { getAuthenticatedClient } from "./auth.js";
+import { CONFIG_DIR } from "./paths.js";
 
 // ============================================================
 // Config — minimal, no per-binding values here
@@ -17,11 +17,22 @@ import { getAuthenticatedClient } from "./auth.js";
 // Local state helpers
 // ============================================================
 
-const CONFIG_DIR = process.env.DAEMON_CONFIG_DIR ?? join(homedir(), ".daemon");
 const SESSION_FILE = join(CONFIG_DIR, "sessions.json");
 const LAST_SEEN_FILE = join(CONFIG_DIR, "last_seen.json");
 const CONTEXT_FILE = join(CONFIG_DIR, "context_cursors.json");
 const STATE_FILE = join(CONFIG_DIR, "state.json");
+const bindingQueues = new Map();
+
+export async function enqueueBindingWork(bindingId, task) {
+  const previous = bindingQueues.get(bindingId) ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(task);
+  bindingQueues.set(bindingId, current);
+  try {
+    return await current;
+  } finally {
+    if (bindingQueues.get(bindingId) === current) bindingQueues.delete(bindingId);
+  }
+}
 
 function isPaused() {
   return loadJson(STATE_FILE).paused === true;
@@ -30,13 +41,13 @@ function isPaused() {
 export function pause() {
   ensureConfigDir();
   saveJson(STATE_FILE, { paused: true });
-  console.log("[daemon] Paused. Mentions will not be processed until you run: daemon-connect resume");
+  console.log("[groupwork] Paused. Mentions will not be processed until you run: groupwork-connect resume");
 }
 
 export function resume() {
   ensureConfigDir();
   saveJson(STATE_FILE, { paused: false });
-  console.log("[daemon] Resumed. Agent will process mentions.");
+  console.log("[groupwork] Resumed. Agent will process mentions.");
 }
 
 function ensureConfigDir() {
@@ -62,13 +73,15 @@ function storeSessionId(bindingId, sessionId) {
   saveJson(SESSION_FILE, sessions);
 }
 
-function getLastSeen(personId) {
-  return loadJson(LAST_SEEN_FILE)[personId] ?? null;
+function getLastSeen(bindingId, legacyPersonId = null) {
+  const data = loadJson(LAST_SEEN_FILE);
+  return data[bindingId] ?? (legacyPersonId ? data[legacyPersonId] : null) ?? null;
 }
 
-function markLastSeen(personId) {
+function markLastSeen(bindingId, createdAt = null) {
   const data = loadJson(LAST_SEEN_FILE);
-  data[personId] = new Date().toISOString();
+  const cursor = createdAt ?? new Date().toISOString();
+  if (!data[bindingId] || data[bindingId] < cursor) data[bindingId] = cursor;
   saveJson(LAST_SEEN_FILE, data);
 }
 
@@ -93,7 +106,7 @@ async function getChatSummary(supabase, chatId) {
   if (error) {
     // The connector remains compatible until the optional summary SQL is run.
     if (error.code !== "PGRST205" && error.code !== "42P01") {
-      console.error("[daemon] Could not load chat summary:", error.message);
+      console.error("[groupwork] Could not load chat summary:", error.message);
     }
     return null;
   }
@@ -110,7 +123,7 @@ async function getChatSummary(supabase, chatId) {
 async function invokeAgent(binding) {
   const agentDef = AGENT_TYPES[binding.agent_type];
   if (!agentDef) {
-    console.error(`[daemon] Unknown agent type: ${binding.agent_type}`);
+    console.error(`[groupwork] Unknown agent type: ${binding.agent_type}`);
     return null;
   }
 
@@ -118,7 +131,7 @@ async function invokeAgent(binding) {
   const projectDir = binding.project_path ?? process.cwd();
   const sessionId = getStoredSessionId(binding.id);
 
-  console.log(`[daemon] Invoking ${agentDef.label} at ${projectDir}...`);
+  console.log(`[groupwork] Invoking ${agentDef.label} at ${projectDir}...`);
 
   const { response, sessionId: newSessionId } = await agentDef.invoke(
     binding._prompt, // set by the caller before invokeAgent is called
@@ -203,15 +216,15 @@ export async function buildPrompt(supabase, triggerMessage, chatId, personDispla
     ? `You are ${options.agentLabel ?? "a coding agent"} in ${personDisplayName}'s private Solo workspace. ${personDisplayName} coordinates the work and has explicitly addressed this message to you. Work from your own project directory and respond as this named agent.`
     : `You are the technical counterpart and proxy for ${personDisplayName} within an engineering team group chat. Your job is to field questions, extract insights from the local project files in your directory, and speak directly with the authority and voice of ${personDisplayName}.`;
 
-  const workDirective = (options.workspaceWrite ?? options.isSolo)
-    ? options.isSolo
-      ? `This is ${personDisplayName}'s private Solo workspace and the local connector has granted you full host access for the explicitly requested work. You may inspect and modify the project, run commands, manage local processes and ports across invocations, and use the network. Stay within the request; do not perform destructive actions or publish externally unless ${personDisplayName} explicitly asks.`
-      : "You may inspect and modify files inside your assigned project workspace, run appropriate local validation, and use network access when required by the task. Do not perform destructive actions, publish externally, or expand beyond the approved request."
+  const workDirective = options.fullAccess || options.isSolo
+    ? `The local connector has granted terminal-equivalent host access for this explicitly authorized request. You may inspect and modify the project, run commands, manage local processes and ports across invocations, and use the network. Stay within the request; do not perform destructive actions or publish externally unless ${personDisplayName} explicitly asks.`
+    : options.workspaceWrite
+      ? "You may inspect and modify files inside your assigned project workspace and run appropriate local validation. Do not perform destructive actions, publish externally, or expand beyond the approved request."
     : "Inspect the assigned project workspace to answer the team. This invocation is read-only; report the change needed rather than modifying files.";
 
   return `Role: ${roleDirective}
 
-${summaryBlock}New Groupwork Context:
+${summaryBlock}New groupwork Context:
 ${contextLines}
 
 Current Request:
@@ -246,11 +259,11 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
       p_topic_tag: topicTag,
     });
     if (judgeError) {
-      console.error("[daemon] Judgment decision failed, defaulting to advice:", judgeError.message);
+      console.error("[groupwork] Judgment decision failed, defaulting to advice:", judgeError.message);
       mode = "advice";
     } else {
       mode = judged ?? "advice";
-      console.log(`[daemon] Judgment decided: ${mode} (topic: ${topicTag})`);
+      console.log(`[groupwork] Judgment decided: ${mode} (topic: ${topicTag})`);
     }
   } else {
     mode = binding.mode ?? "advice";
@@ -267,10 +280,10 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
       topic_tag: triggerClassification?.topicTag ?? "general",
     });
     if (error) {
-      console.error("[daemon] Failed to post auto response:", error.message);
+      console.error("[groupwork] Failed to post auto response:", error.message);
       return false;
     }
-    console.log("[daemon] Act response posted to chat.");
+    console.log("[groupwork] Act response posted to chat.");
     return true;
   } else {
     const { data: draft, error } = await supabase
@@ -288,10 +301,10 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
       .select()
       .single();
     if (error) {
-      console.error("[daemon] Failed to post suggested draft:", error.message);
+      console.error("[groupwork] Failed to post suggested draft:", error.message);
       return false;
     }
-    console.log("[daemon] Suggested draft posted to private thread — awaiting human action.");
+    console.log("[groupwork] Suggested draft posted to private thread — awaiting human action.");
     // human action (send/edit/cancel) is logged by the web UI private thread component
     return true;
   }
@@ -315,25 +328,25 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     .eq("id", mention.message_id)
     .single();
 
-  if (!msg) { console.error("[daemon] Could not fetch triggering message."); return false; }
+  if (!msg) { console.error("[groupwork] Could not fetch triggering message."); return false; }
   // Team mentions target the person and should not make their own agent answer
   // their own message. Solo mentions explicitly target a binding, so the owner
   // is expected to be the sender and must be allowed through.
   if (!explicitBinding && msg.sender_person_id === person.id) return false;
 
   if (isPaused()) {
-    console.log("[daemon] Paused — mention received but not processing. Run: daemon-connect resume");
+    console.log("[groupwork] Paused — mention received but not processing. Run: groupwork-connect resume");
     return false;
   }
 
   const chatBindings = bindingsByChat[msg.chat_id] ?? [];
   const binding = resolveMentionBinding(chatBindings, explicitBinding);
   if (!binding) {
-    console.error(`[daemon] Could not resolve one binding for chat ${msg.chat_id}. Solo chats require an explicit agent mention.`);
+    console.error(`[groupwork] Could not resolve one binding for chat ${msg.chat_id}. Solo chats require an explicit agent mention.`);
     return false;
   }
   if (binding.chat_id !== msg.chat_id) {
-    console.error(`[daemon] Rejected agent mention for binding ${binding.id}: it does not belong to chat ${msg.chat_id}.`);
+    console.error(`[groupwork] Rejected agent mention for binding ${binding.id}: it does not belong to chat ${msg.chat_id}.`);
     return false;
   }
 
@@ -351,19 +364,20 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     agentLabel: binding.agent_label ?? AGENT_TYPES[binding.agent_type]?.label,
     contextSince,
     workspaceWrite: isSolo || options.workspaceWrite === true,
+    fullAccess: isSolo || options.fullAccess === true,
     chatSummary: chatSummary?.summary ?? null,
   });
   binding._prompt = prompt;
   binding._isSolo = isSolo;
   binding._workspaceWrite = isSolo || options.workspaceWrite === true;
   binding._networkAccess = isSolo || options.networkAccess === true;
-  binding._fullAccess = isSolo;
+  binding._fullAccess = isSolo || options.fullAccess === true;
 
   binding._beginWork?.();
   try {
     const response = await invokeAgent(binding);
     if (!response) {
-      console.error("[daemon] No response from agent.");
+      console.error("[groupwork] No response from agent.");
       binding._finishWork?.(false);
       return false;
     }
@@ -373,18 +387,18 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
       binding._finishWork?.(false);
       return false;
     }
-    markLastSeen(person.id);
+    if (isSolo) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
     storeContextCursor(binding.id, msg.created_at);
     binding._finishWork?.(true);
     return true;
   } catch (error) {
-    console.error(`[daemon] Agent processing failed: ${error.message}`);
+    console.error(`[groupwork] Agent processing failed: ${error.message}`);
     binding._finishWork?.(false);
     return false;
   }
 }
 
-export async function handleRunRequest(supabase, request, person, bindingsByChat, bindingsById) {
+async function executeRunRequest(supabase, request, person, bindingsByChat, bindingsById) {
   const binding = bindingsById[request.agent_binding_id];
   if (!binding || binding.person_id && binding.person_id !== person.id) return;
 
@@ -392,7 +406,7 @@ export async function handleRunRequest(supabase, request, person, bindingsByChat
     p_request_id: request.id,
   });
   if (claimError) {
-    console.error(`[daemon] Could not claim approved run ${request.id}: ${claimError.message}`);
+    console.error(`[groupwork] Could not claim approved run ${request.id}: ${claimError.message}`);
     return;
   }
   if (!claimed) return; // another delivery or connector process already claimed it
@@ -406,17 +420,23 @@ export async function handleRunRequest(supabase, request, person, bindingsByChat
       bindingsByChat,
       binding,
       false,
-      { isSolo: false, workspaceWrite: true, networkAccess: true },
+      { isSolo: false, workspaceWrite: true, networkAccess: true, fullAccess: true },
     );
   } catch (error) {
-    console.error(`[daemon] Approved run failed: ${error.message}`);
+    console.error(`[groupwork] Approved run failed: ${error.message}`);
   } finally {
     const { error: finishError } = await supabase.rpc("finish_agent_run_request", {
       p_request_id: request.id,
       p_succeeded: succeeded,
     });
-    if (finishError) console.error(`[daemon] Could not finish run ${request.id}: ${finishError.message}`);
+    if (finishError) console.error(`[groupwork] Could not finish run ${request.id}: ${finishError.message}`);
   }
+}
+
+export async function handleRunRequest(supabase, request, person, bindingsByChat, bindingsById) {
+  return enqueueBindingWork(request.agent_binding_id, () =>
+    executeRunRequest(supabase, request, person, bindingsByChat, bindingsById)
+  );
 }
 
 // ============================================================
@@ -424,18 +444,18 @@ export async function handleRunRequest(supabase, request, person, bindingsByChat
 // ============================================================
 
 export async function start() {
-  console.log("[daemon] Starting connector...");
+  console.log("[groupwork] Starting connector...");
 
   let supabase;
   try {
     supabase = await getAuthenticatedClient();
   } catch (error) {
-    console.error(`[daemon] ${error.message}`);
+    console.error(`[groupwork] ${error.message}`);
     return;
   }
 
   const { data: { user } } = await supabase.auth.getUser();
-  console.log("[daemon] Authenticated as", user.email);
+  console.log("[groupwork] Authenticated as", user.email);
   const { data: person } = await supabase
     .from("person")
     .select("id, display_name")
@@ -443,11 +463,11 @@ export async function start() {
     .single();
 
   if (!person) {
-    console.error("[daemon] No person record found. Sign up via the web UI first.");
+    console.error("[groupwork] No person record found. Sign up via the web UI first.");
     process.exit(1);
   }
 
-  console.log("[daemon] Person:", person.display_name, "(", person.id, ")");
+  console.log("[groupwork] Person:", person.display_name, "(", person.id, ")");
 
   // fetch ALL bindings for this person across all chats
   const { data: bindings } = await supabase
@@ -456,7 +476,7 @@ export async function start() {
     .eq("person_id", person.id);
 
   if (!bindings || bindings.length === 0) {
-    console.log("[daemon] No agent bindings found. Register an agent in the web UI first.");
+    console.log("[groupwork] No agent bindings found. Register an agent in the web UI first.");
     process.exit(0);
   }
 
@@ -476,7 +496,7 @@ export async function start() {
       }, (payload) => {
         const msg = payload.new;
         if (msg.sender_person_id !== person.id) {
-          console.log(`[daemon] [${chatId.slice(0,8)}] Observed:`, msg.body.slice(0, 60));
+          console.log(`[groupwork] [${chatId.slice(0,8)}] Observed:`, msg.body.slice(0, 60));
         }
       })
       .subscribe();
@@ -554,7 +574,7 @@ export async function start() {
     addOrUpdateBinding(b);
     observeChat(b.chat_id);
     startPresence(b);
-    console.log(`[daemon] Binding: ${b.agent_label ?? b.agent_type} → chat ${b.chat_id} @ ${b.project_path ?? "(cwd)"}`);
+    console.log(`[groupwork] Binding: ${b.agent_label ?? b.agent_type} → chat ${b.chat_id} @ ${b.project_path ?? "(cwd)"}`);
   }
 
   // One channel handles both binding inserts and updates. Supabase does not
@@ -569,7 +589,7 @@ export async function start() {
       addOrUpdateBinding(b);
       observeChat(b.chat_id);
       startPresence(b);
-      console.log(`[daemon] New binding registered live: ${b.agent_label ?? b.agent_type} → chat ${b.chat_id.slice(0,8)} @ ${b.project_path ?? "(cwd)"}`);
+      console.log(`[groupwork] New binding registered live: ${b.agent_label ?? b.agent_type} → chat ${b.chat_id.slice(0,8)} @ ${b.project_path ?? "(cwd)"}`);
     })
     .on("postgres_changes", {
       event: "UPDATE", schema: "public", table: "agent_binding",
@@ -577,7 +597,7 @@ export async function start() {
     }, (payload) => {
       const b = payload.new;
       addOrUpdateBinding(b); // refresh in-memory binding (picks up mode changes etc.)
-      console.log(`[daemon] Binding updated: ${b.chat_id.slice(0,8)} mode=${b.mode}`);
+      console.log(`[groupwork] Binding updated: ${b.chat_id.slice(0,8)} mode=${b.mode}`);
     })
     .on("postgres_changes", {
       event: "DELETE", schema: "public", table: "agent_binding",
@@ -585,7 +605,7 @@ export async function start() {
     }, (payload) => {
       removeBinding(payload.old);
       stopPresence(payload.old.id);
-      console.log(`[daemon] Binding removed: ${payload.old.id}`);
+      console.log(`[groupwork] Binding removed: ${payload.old.id}`);
     })
     .subscribe();
 
@@ -598,7 +618,7 @@ export async function start() {
       filter: `owner_person_id=eq.${person.id}`,
     }, async (payload) => {
       if (payload.new.status !== "approved") return;
-      console.log("[daemon] Approved Team run received:", payload.new.id);
+      console.log("[groupwork] Approved Team run received:", payload.new.id);
       await handleRunRequest(supabase, payload.new, person, bindingsByChat, bindingsById);
     })
     .subscribe();
@@ -613,8 +633,10 @@ export async function start() {
     }, async (payload) => {
       const binding = bindingsById[payload.new.agent_binding_id];
       if (!binding) return;
-      console.log(`[daemon] Explicit mention received for ${binding.agent_label ?? binding.agent_type}: ${payload.new.message_id}`);
-      await handleMention(supabase, payload.new, person, bindingsByChat, binding);
+      console.log(`[groupwork] Explicit mention received for ${binding.agent_label ?? binding.agent_type}: ${payload.new.message_id}`);
+      await enqueueBindingWork(binding.id, () =>
+        handleMention(supabase, payload.new, person, bindingsByChat, binding)
+      );
     })
     .subscribe();
 
@@ -626,13 +648,12 @@ export async function start() {
   // Re-tracking periodically keeps our own state fresh and doesn't change
   // that server-side timeout, but avoids us looking stale sooner than we
   // have to.
-  console.log(`[daemon] Connected. Listening for mentions of ${person.display_name} across ${bindings.length} chat(s).`);
-  if (isPaused()) console.log("[daemon] ⚠️  Currently PAUSED — run daemon-connect resume to process mentions.");
-  console.log("[daemon] Press Ctrl+C to stop.");
+  console.log(`[groupwork] Connected. Listening for mentions of ${person.display_name} across ${bindings.length} chat(s).`);
+  if (isPaused()) console.log("[groupwork] ⚠️  Currently PAUSED — run groupwork-connect resume to process mentions.");
+  console.log("[groupwork] Press Ctrl+C to stop.");
 
   // catch-up: approved Team runs are safe to resume because the owner already
   // made the execution and workspace-permission decision.
-  const lastSeen = getLastSeen(person.id);
   const { data: approvedRuns, error: catchupError } = await supabase
     .from("agent_run_request")
     .select("id, message_id, agent_binding_id, permission, status, created_at")
@@ -642,39 +663,43 @@ export async function start() {
     .limit(10);
 
   if (catchupError) {
-    console.error("[daemon] Approved-run catch-up query failed:", catchupError.message);
+    console.error("[groupwork] Approved-run catch-up query failed:", catchupError.message);
   } else if (approvedRuns?.length) {
-    console.log(`[daemon] ${approvedRuns.length} approved Team run(s) waiting. Processing...`);
+    console.log(`[groupwork] ${approvedRuns.length} approved Team run(s) waiting. Processing...`);
     for (const request of approvedRuns) {
       await handleRunRequest(supabase, request, person, bindingsByChat, bindingsById);
     }
-    console.log("[daemon] Approved-run catch-up complete.");
+    console.log("[groupwork] Approved-run catch-up complete.");
   } else {
-    console.log("[daemon] No approved Team runs waiting.");
+    console.log("[groupwork] No approved Team runs waiting.");
   }
 
-  let agentMentionQuery = supabase
-    .from("message_agent_mention")
-    .select("message_id, agent_binding_id, created_at")
-    .in("agent_binding_id", Object.keys(bindingsById))
-    .order("created_at", { ascending: true })
-    .limit(10);
-
-  if (lastSeen) agentMentionQuery = agentMentionQuery.gt("created_at", lastSeen);
-  const { data: missedAgentMentions, error: agentCatchupError } = await agentMentionQuery;
-  if (agentCatchupError) {
-    console.error("[daemon] Solo catch-up query failed:", agentCatchupError.message);
-  } else if (missedAgentMentions?.length) {
-    console.log(`[daemon] ${missedAgentMentions.length} unprocessed explicit agent mention(s). Processing in Advice...`);
-    for (const mention of missedAgentMentions) {
-      const binding = bindingsById[mention.agent_binding_id];
-      if (binding) await handleMention(supabase, mention, person, bindingsByChat, binding, true);
+  for (const binding of Object.values(bindingsById)) {
+    let agentMentionQuery = supabase
+      .from("message_agent_mention")
+      .select("message_id, agent_binding_id, created_at")
+      .eq("agent_binding_id", binding.id)
+      .order("created_at", { ascending: true })
+      .limit(25);
+    const lastSeen = getLastSeen(binding.id, person.id);
+    if (lastSeen) agentMentionQuery = agentMentionQuery.gt("created_at", lastSeen);
+    const { data: missedAgentMentions, error: agentCatchupError } = await agentMentionQuery;
+    if (agentCatchupError) {
+      console.error(`[groupwork] Solo catch-up query failed for ${binding.agent_label ?? binding.id}:`, agentCatchupError.message);
+      continue;
     }
-    console.log("[daemon] Solo catch-up complete.");
+    for (const mention of missedAgentMentions ?? []) {
+      await enqueueBindingWork(binding.id, () =>
+        handleMention(supabase, mention, person, bindingsByChat, binding, true)
+      );
+    }
+    if (missedAgentMentions?.length) {
+      console.log(`[groupwork] Solo catch-up complete for ${binding.agent_label ?? binding.id}.`);
+    }
   }
 
   process.on("SIGINT", () => {
-    console.log("\n[daemon] Disconnecting...");
+    console.log("\n[groupwork] Disconnecting...");
     process.exit(0);
   });
 }

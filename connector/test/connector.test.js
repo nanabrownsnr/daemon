@@ -6,13 +6,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 // connector.js validates these at import time but does not connect until start().
-process.env.DAEMON_SUPABASE_URL ??= "https://regression.invalid";
-process.env.DAEMON_SUPABASE_ANON_KEY ??= "regression-key";
-process.env.DAEMON_EMAIL ??= "regression@example.com";
-process.env.DAEMON_PASSWORD ??= "regression-password";
-process.env.DAEMON_CONFIG_DIR = mkdtempSync(join(tmpdir(), "daemon-regression-"));
+process.env.GROUPWORK_SUPABASE_URL ??= "https://regression.invalid";
+process.env.GROUPWORK_SUPABASE_ANON_KEY ??= "regression-key";
+process.env.GROUPWORK_EMAIL ??= "regression@example.com";
+process.env.GROUPWORK_PASSWORD ??= "regression-password";
+process.env.GROUPWORK_CONFIG_DIR = mkdtempSync(join(tmpdir(), "groupwork-regression-"));
 
-const { classifyQuestion, buildPrompt, routeResponse, pause, resume, resolveMentionBinding } = await import("../src/connector.js");
+const { classifyQuestion, buildPrompt, routeResponse, pause, resume, resolveMentionBinding, enqueueBindingWork } = await import("../src/connector.js");
 const { AGENT_TYPES } = await import("../src/agent-types.js");
 
 function responseQuery(data) {
@@ -68,9 +68,9 @@ test("classifies supported MVP topics and question types", () => {
 
 test("pause and resume persist connector state", () => {
   pause();
-  assert.equal(JSON.parse(readFileSync(join(process.env.DAEMON_CONFIG_DIR, "state.json"), "utf8")).paused, true);
+  assert.equal(JSON.parse(readFileSync(join(process.env.GROUPWORK_CONFIG_DIR, "state.json"), "utf8")).paused, true);
   resume();
-  assert.equal(JSON.parse(readFileSync(join(process.env.DAEMON_CONFIG_DIR, "state.json"), "utf8")).paused, false);
+  assert.equal(JSON.parse(readFileSync(join(process.env.GROUPWORK_CONFIG_DIR, "state.json"), "utf8")).paused, false);
 });
 
 test("prompt includes recent context, target message, and owner identity", async () => {
@@ -100,7 +100,7 @@ test("Solo prompt keeps the selected agent identity", async () => {
   assert.match(prompt, /private Solo workspace/);
   assert.match(prompt, /explicitly addressed/);
   assert.match(prompt, /inspect and modify the project/);
-  assert.match(prompt, /full host access/);
+  assert.match(prompt, /terminal-equivalent host access/);
   assert.match(prompt, /manage local processes and ports across invocations/);
   assert.match(prompt, /Complete the requested action in a bounded way/);
   assert.match(prompt, /always return a response to the group/);
@@ -126,12 +126,44 @@ test("prompt layers a shared summary under the recent raw delta", async () => {
   assert.match(prompt, /inspect and modify files/i);
 });
 
+test("an accepted Team request receives terminal-equivalent execution instructions", async () => {
+  const supabase = { from: () => responseQuery([]) };
+  const prompt = await buildPrompt(
+    supabase,
+    { body: "Implement the approved change", sender: { display_name: "Ama" } },
+    "team-chat",
+    "Nana",
+    { workspaceWrite: true, fullAccess: true },
+  );
+  assert.match(prompt, /terminal-equivalent host access/);
+  assert.match(prompt, /explicitly authorized request/);
+});
+
 test("mention routing requires an exact binding when a chat has several agents", () => {
   const claude = { id: "claude" };
   const codex = { id: "codex" };
   assert.equal(resolveMentionBinding([claude]), claude);
   assert.equal(resolveMentionBinding([claude, codex]), null);
   assert.equal(resolveMentionBinding([claude, codex], codex), codex);
+});
+
+test("work is serialized per binding while different bindings remain independent", async () => {
+  const events = [];
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  const first = enqueueBindingWork("binding-a", async () => {
+    events.push("a1-start");
+    await firstGate;
+    events.push("a1-end");
+  });
+  const second = enqueueBindingWork("binding-a", async () => events.push("a2"));
+  const other = enqueueBindingWork("binding-b", async () => events.push("b1"));
+
+  await other;
+  assert.deepEqual(events, ["a1-start", "b1"]);
+  releaseFirst();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["a1-start", "b1", "a1-end", "a2"]);
 });
 
 test("Advice creates a private draft with classification and trigger", async () => {

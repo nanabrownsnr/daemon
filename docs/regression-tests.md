@@ -16,10 +16,10 @@ cd connector
 npm test
 ```
 
-These cover topic/question classification, prompt context, Advice and Act
-routing, Judgment RPC decisions and safe fallback, forced-Advice catch-up,
-pause/resume persistence, prevention of self-reinforcing trust events, and the
-read-only Claude Code invocation contract.
+These cover topic/question classification, prompt context, per-binding
+serialization, Advice and Act routing, Judgment RPC decisions and safe
+fallback, forced-Advice catch-up, pause/resume persistence, prevention of
+self-reinforcing trust events, and Claude/Codex invocation contracts.
 
 ## Staging browser and Supabase regressions
 
@@ -51,7 +51,8 @@ npm run test:e2e
 The browser suite covers authentication/person lookup, chat creation and
 listing, invitations, membership, Claude-only agent registration, Advice/Act/
 Judgment mode changes, realtime messaging across two browser sessions,
-structured mentions, User A's real local connector/Claude draft loop, private
+atomic structured mentions, Team Accept/Reject gating, User A's real local
+connector/Claude draft loop, Solo two-agent registration and access consent, private
 drafts, judgment-event recording, private-thread RLS isolation, the
 `decide_topic_mode` RPC, and presence. User B does not need or receive an agent
 binding.

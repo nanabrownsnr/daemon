@@ -1,6 +1,6 @@
 # groupwork connector
 
-Bridges your local Claude Code or Codex CLI agent to a dæmon group chat. Run this on your
+Bridges your local Claude Code or Codex CLI agent to a groupwork chat. Run this on your
 development machine, pointed at your project directory.
 
 ## Prerequisites
@@ -29,11 +29,11 @@ groupwork-connect start
 ```
 
 The project directory and agent type come from the binding configured in the
-groupwork chat. Solo agents can edit their assigned workspace, run local
-validation, and use network access because the owner explicitly invokes them.
+groupwork chat. Solo agents receive their normal terminal-equivalent local
+permissions because the owner explicitly invokes them.
 Team-chat invocations are queued in Agent Workspace until the agent owner
-accepts or rejects the work; acceptance grants the same practical execution
-bundle inside the bound project.
+accepts or rejects the work; acceptance grants the selected runtime its normal
+local terminal permissions for that request.
 
 ## What it does
 
@@ -57,7 +57,7 @@ chat without your explicit approval.
 
 **Act:** responses post directly to the group chat on your behalf, tagged
 "(agent)". Use this when you're off the clock and trust the agent to answer
-routine questions without review. Switch back to suggested when actively working.
+routine questions without review. Switch back to Advice when actively working.
 
 **Judgment:** groupwork chooses Advice or Act per topic using the trust earned
 from your previous draft decisions.

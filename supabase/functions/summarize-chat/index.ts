@@ -82,7 +82,7 @@ async function requestSummary(
         Authorization: `Bearer ${openRouterKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": referer,
-        "X-Title": "Groupwork chat summaries",
+        "X-Title": "groupwork chat summaries",
       },
       body: JSON.stringify({
         model,
@@ -134,7 +134,7 @@ async function processSummary(
   if (!data) return;
 
   const batch = data as SummaryBatch;
-  const prompt = `Maintain Groupwork's shared running summary for an engineering chat.
+  const prompt = `Maintain groupwork's shared running summary for an engineering chat.
 
 Previous shared summary:
 ${batch.previous_summary || "No previous summary."}
@@ -182,7 +182,7 @@ Deno.serve(async (request) => {
   }
 
   const openRouterKey = Deno.env.get("OPENROUTER_API_KEY");
-  const model = Deno.env.get("OPENROUTER_SUMMARY_MODEL") ?? "openrouter/free";
+  const model = Deno.env.get("OPENROUTER_SUMMARY_MODEL") ?? "z-ai/glm-5.2:free";
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const adminKey = secretKey();
   if (!openRouterKey || !supabaseUrl || !adminKey) {

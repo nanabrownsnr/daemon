@@ -1,6 +1,6 @@
 # Platform chat summaries
 
-Groupwork owns shared chat summaries. Connectors only read the completed row
+groupwork owns shared chat summaries. Connectors only read the completed row
 from `chat_context_summary`; Claude Code and Codex CLI never generate it.
 
 ## 1. Database
@@ -12,11 +12,12 @@ Run `docs/sql/chat-context-summary.sql` in the Supabase SQL editor.
 In Supabase Dashboard, open **Edge Functions → Secrets** and add:
 
 - `OPENROUTER_API_KEY`: the platform OpenRouter API key.
-- `OPENROUTER_SUMMARY_MODEL`: use `openrouter/free` for private UAT; choose a
-  fixed paid model before production.
+- `OPENROUTER_SUMMARY_MODEL`: currently `z-ai/glm-5.2:free` for private UAT.
+  Free-provider availability and ZDR routing are not guaranteed; choose a fixed
+  paid ZDR-compatible model before production.
 - `SUMMARY_WEBHOOK_SECRET`: a long random value, such as the output of
   `openssl rand -hex 32`.
-- `GROUPWORK_APP_URL`: the deployed Groupwork URL used for OpenRouter request
+- `GROUPWORK_APP_URL`: the deployed groupwork URL used for OpenRouter request
   attribution.
 
 These are platform secrets. Never prefix them with `NEXT_PUBLIC_`, place them
@@ -26,7 +27,7 @@ CLI alternative after linking the project:
 
 ```bash
 supabase secrets set OPENROUTER_API_KEY=replace_me
-supabase secrets set OPENROUTER_SUMMARY_MODEL=openrouter/free
+supabase secrets set OPENROUTER_SUMMARY_MODEL=z-ai/glm-5.2:free
 supabase secrets set SUMMARY_WEBHOOK_SECRET=replace_with_random_value
 supabase secrets set GROUPWORK_APP_URL=https://your-groupwork-app.example
 ```

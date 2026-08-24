@@ -1,15 +1,14 @@
 {
-  "name": "@daemon/connect",
-  "version": "0.4.6",
-  "description": "Local bridge connecting Claude Code or Codex CLI to a dæmon chat",
+  "name": "@groupwork/connect",
+  "version": "0.5.0",
+  "description": "Local bridge connecting Claude Code or Codex CLI to a groupwork chat",
   "type": "module",
   "files": [
     "src",
     "README.md"
   ],
   "bin": {
-    "groupwork-connect": "./src/cli.js",
-    "daemon-connect": "./src/cli.js"
+    "groupwork-connect": "./src/cli.js"
   },
   "engines": {
     "node": ">=20"

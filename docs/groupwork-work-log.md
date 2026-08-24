@@ -1,4 +1,4 @@
-# Dæmon — Work Log & Product Backlog
+# groupwork — Work Log & Product Backlog
 *Treat this as the source of truth. Update after every session.*
 
 ---
@@ -7,7 +7,7 @@
 
 **For** developers and their teams already working with AI coding agents
 **Who** are tired of manually relaying answers between their agent and their teammates
-**Dæmon** is an AI-native team chat
+**groupwork** is an AI-native team chat
 **That** lets your agent join the conversation as you, learning when to answer, draft, or stay quiet
 **Unlike** Slack/Teams bolting on a generic bot, or Claude Code/Cursor working alone in your terminal
 **Our product** makes your agent's judgment a trust that's earned through real use, not just another feature to copy.
@@ -37,17 +37,19 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
 | `last_seen` timestamp | Startup catch-up only fetches mentions since last processed. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
-| Connector regression tests | Fifteen fast Node tests cover classification, layered summary/recent-context prompts, Team/Solo prompt construction and binding resolution, read/write permission boundaries, Advice/Act/Judgment routing, safe fallbacks (including Claude `--continue` → new-session fallback), pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation and continuity. Keep these running during MVP development. |
+| Connector regression tests | Eighteen fast Node tests cover classification, layered summary/recent-context prompts, Team/Solo prompt construction and binding resolution, per-binding execution serialization, permission boundaries, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation and continuity. Keep these running during MVP development. |
+| Per-binding execution queue | ✅ Invocations for one binding are serialized so a second mention cannot concurrently resume the same Claude/Codex session. Different bindings remain concurrent. |
+| Atomic message + mention delivery | ✅ `send_message_with_mentions` validates chat membership and Team/Solo targets, then stores the human message and all structured mentions in one transaction. SQL: `docs/sql/send-message-atomic.sql`. |
 | Agent working/error presence | ✅ Binding dot is green online, pulses yellow while an invocation is running, and shows red for 15 seconds after an invocation failure. |
 | Incremental connector prompts | ✅ Each binding stores its own successful context cursor and receives only new chat messages on later turns, while first invocation retains a bounded 15-message context window. The target message is not duplicated in context. |
 | Platform-owned running chat summary | ✅ A Supabase Database Webhook wakes the `summarize-chat` Edge Function after message inserts. PostgreSQL atomically claims each 20-message block; an independent OpenRouter model produces shared goal/decision/state/task/handoff context. Connectors only read the stored summary plus their raw delta. Failures never block chat or agent work. SQL: `docs/sql/chat-context-summary.sql`; setup: `docs/platform-chat-summaries.md`. |
-| Owner execution gate | ✅ Team mentions create pending Agent Workspace requests and do not reach the connector until the agent owner chooses **Accept** or **Reject**. Accepted requests receive workspace writes, commands, and network access inside the bound project and are atomically claimed once. Execution and publication remain separate controls. SQL: `docs/sql/team-run-approval.sql`. |
-| Solo execution permissions | ✅ Explicit Solo mentions authorize native-style full local execution for Claude/Codex: files, commands, validation, host processes and ports across invocations, and network access. This deliberately bypasses the Codex sandbox and Claude permission prompts on the connector computer; Solo is therefore restricted to the authenticated owner's private workspace. Team execution remains project-scoped. |
-| Solo multi-agent workspace | ✅ Implemented in code: persistent labeled bindings, agent-only `@` targeting, independent sessions/project paths/modes/presence, binding-specific prompts, and per-agent Agent Workspace tabs. Database runbook `docs/sql/solo-multi-agent.sql` and live UAT remain. Autonomous agent-to-agent triggering is deliberately excluded. |
-| Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is persisted per binding and resumed exactly. Solo uses native-style full local access; accepted Team runs use workspace-write plus network. Completed JSONL turns return immediately even when a detached server keeps inherited streams open. |
-| Codex workspace-write compatibility | ✅ Current Codex CLI treats `--approve-for-me` as the selector for its workspace-write sandbox and rejects combining it with `--sandbox workspace-write`. Connector 0.4.2 uses `--approve-for-me` alone for approved writes and retains explicit `--sandbox read-only` for read-only work. |
+| Owner execution gate | ✅ Team mentions create pending Agent Workspace requests and do not reach the connector until the agent owner chooses **Accept** or **Reject**. Accept explicitly grants the local runtime terminal-equivalent host permissions for that request; requests are atomically claimed once. Execution and publication remain separate controls. SQL: `docs/sql/team-run-approval.sql`. |
+| Solo execution permissions | ✅ Explicit Solo mentions authorize native-style full local execution for Claude/Codex: files, commands, validation, host processes and ports across invocations, and network access. This deliberately bypasses the Codex sandbox and Claude permission prompts on the connector computer; the binding UI requires an explicit acknowledgement. |
+| Solo multi-agent workspace | ✅ Live Claude/Codex UAT complete: persistent labeled bindings, agent-only `@` targeting, independent sessions/project paths/modes/presence, binding-specific prompts, and per-agent Agent Workspace tabs. Autonomous agent-to-agent triggering is deliberately excluded. |
+| Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is persisted per binding and resumed exactly. Solo and accepted Team work use native-style full local access. Completed JSONL turns return immediately even when a detached server keeps inherited streams open. |
+| Codex sandbox compatibility | ✅ Read-only adapter calls retain the Codex sandbox. Authorized Solo and accepted Team work deliberately use the runtime's native full-access automation mode, matching the execution consent shown in the UI. |
 | Connector browser authorization | ✅ `groupwork-connect login` opens the signed-in web app for explicit loopback authorization. The connector stores refreshable session tokens with `0600` permissions and never receives or stores the user's password. Logout removes the local session. |
-| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. Both `groupwork-connect` and legacy `daemon-connect` bins work. The website `/connector` page provides download and setup instructions. Public npm publication remains gated on the final package name, deployed app URL, and a second physical-machine UAT. |
+| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. Both `groupwork-connect` and legacy `groupwork-connect` bins work. The website `/connector` page provides download and setup instructions. Public npm publication remains gated on the final package name, deployed app URL, and a second physical-machine UAT. |
 | Connector doctor | ✅ Checks saved login, Supabase identity, bindings, required Claude/Codex installation, local project paths, and website reachability before start. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
@@ -74,7 +76,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 6 | ✅ **Presence indicator** | Green/grey dot per agent binding showing whether the connector is currently running. Implemented with Supabase Presence and a 15-second connector heartbeat. | — |
 | 7 | ✅ **Judgment event logging** | Private thread actions write real `judgment_event` rows for send/edit/cancel/handle-myself. Automatic Act delivery deliberately records no positive trust signal, preventing self-reinforcing promotion. | — |
 | 8 | ✅ **RLS policies for `judgment_event`, `topic_trust`** | Migration 014. | — |
-| 9 | ✅ **Connector pause/resume** | `daemon-connect pause` / `resume` — local state file, checked before every agent invocation. Shown on startup if left paused. | — |
+| 9 | ✅ **Connector pause/resume** | `groupwork-connect pause` / `resume` — local state file, checked before every agent invocation. Shown on startup if left paused. | — |
 | 10 | ✅ **Startup catch-up: auto-process missed mentions** | Missed mentions are processed on startup and forcibly routed through Advice mode so stale batches never auto-post unattended. | #3 |
 
 ### P2 — Core product differentiation (the actual secret, built on top of proven loop)
@@ -85,6 +87,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 12 | ✅ **Topic tagging** | Connector classifies mentions with keyword-based question types and topic tags before routing. | #11 |
 | 13 | **Pairwise relationship trust (chemistry model)** *(deferred until real usage)* | True per-person-pair trust links instead of category-based. Do not design this against synthetic data; revisit once real teams generate meaningful interaction volume. | #11 + real users |
 | 14 | **Connector-advertised project paths** *(deferred to desktop app)* | Path discovery and native folder selection belong in desktop onboarding. Keep the web MVP's free-text project path until then. | #21 |
+| 27 | **Learned request approval setting** *(deferred until real Team data)* | A settings page will separate inbound execution (`Always ask` vs learned trust) from outbound publication (Advice/Act/Judgment). MVP keeps Team execution on manual Accept because automatic full-host execution needs relationship, topic and risk evidence. | #11 + real users |
 
 ### P3 — Scale and polish (post-MVP)
 
@@ -98,9 +101,9 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 20 | **Agent-to-agent loop circuit breaker** | Once auto-triggering exists beyond explicit mention, need a max-hop-count or "agents can't mention each other without a human-initiated thread" rule. |
 | 21 | **Desktop app / native file picker** | For smoother connector onboarding (select folder, pick agent type, done). Deferred until loop is proven. |
 | 22 | ✅ **Second agent adapter: Codex CLI** | Codex CLI now shares the connector, prompt, routing, session persistence, presence, and Judgment pipeline with Claude Code. Goose, Hermes, Ollama, and others remain future adapter work. |
-| 23 | 🚧 **Solo multi-agent chats** | Human-directed implementation complete in code. Run `docs/sql/solo-multi-agent.sql`, rebuild/install the connector package, then UAT explicit Claude/Codex mentions and separate workspaces. Autonomous agent-to-agent triggering remains deferred. |
+| 23 | ✅ **Solo multi-agent chats** | Human-directed Claude/Codex UAT passed with explicit mentions, separate workspaces and persistent sessions. Autonomous agent-to-agent triggering remains deferred. |
 | 24 | **UI redesign** | Current UI is functional but unstyled. Redesign is a pure CSS/className change — no logic touch — estimated 1-2 days with a clear design direction. |
-| 25 | **Rename product** | "dæmon" → something simpler floated. Deferred. |
+| 25 | ✅ **Canonical groupwork identity** | Product copy, package identity, CLI, logs, configuration, storage keys and documentation now use groupwork. Connector 0.5.0 migrates existing `~/.daemon` state to `~/.groupwork`; legacy environment names are temporary compatibility fallbacks only. |
 | 26 | **Shared chat artifacts / agent handoffs** | Deferred until after the MVP and Codex/Claude cross-platform UAT. Eventually share focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—while GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; consider MCP later. |
 
 ---
@@ -120,19 +123,19 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | `message_mention` join table (not a column) | Correctly handles multiple mentions per message. Many-to-many = join table |
 | Judgment mode is the concurrency control | Act = dev is off the clock (single consumer of session). Advice = human gates when resume fires. No infrastructure locking needed. |
 | Renamed Suggested/Auto → Advice/Act | Clearer product language. Required a full enum migration (`response_mode` type) since the DB enum was never updated when the app-level naming changed — this caused a real bug (silent insert failures on every agent message) until caught and fixed in migration 015. |
-| Agent message attribution: "Sent by [Name]'s dæmon" | Shown under every agent-sent message, visible to all chat members, not just the sender. "On behalf of" was considered but rejected — inaccurate tense for something already sent. |
-| Connector-owned Claude Code session (separate session_id) | Avoids race condition with interactive session. `--resume` provides continuity within dæmon-triggered Q&A specifically |
-| Execution approval is binary | Solo owner mentions imply full local execution on the connector computer, including cross-invocation process management. Team owners accept or reject the whole run instead of choosing technical permission tiers; accepted Team runs remain sandboxed to the bound project with network access. |
+| Agent message attribution: "Sent by [Name]'s groupwork" | Shown under every agent-sent message, visible to all chat members, not just the sender. "On behalf of" was considered but rejected — inaccurate tense for something already sent. |
+| Connector-owned Claude Code session (separate session_id) | Avoids race condition with interactive session. `--resume` provides continuity within groupwork-triggered Q&A specifically |
+| Execution approval is binary | Solo owner mentions imply full local execution on the connector computer. Team owners Accept or Reject the whole request; Accept grants the selected local runtime its normal terminal-equivalent permissions. Publication remains a separate Advice/Act/Judgment decision. |
 | Codex CLI is the second supported runtime | Proves the product loop is platform-neutral while staying focused on two widely used developer agents. |
 | Project directory is the initial agent-context boundary | Claude uses its directory-scoped continuation behavior; Codex first tries `exec resume --last` from that directory. Once attached or created, the connector stores the exact session/thread ID per binding. |
-| Codex connector sessions enforce the approved sandbox | `codex exec --json` supplies a durable thread ID; subsequent mentions resume it. The connector passes `read-only` or `workspace-write` from the Solo/Team approval boundary. |
+| Connector sessions use native runtime permissions after authorization | `codex exec --json` supplies a durable thread ID and subsequent mentions resume it. Solo mentions and accepted Team requests use the runtime's full local execution mode; unapproved Team requests never reach the runtime. |
 | Shared artifacts solve agent handoff, not generic storage | Do not sync project folders or build a Drive clone. Share small, conversation-scoped work products across otherwise isolated agents; keep committed code and branches in GitHub. |
 | Attachments before MCP | First prove the handoff through chat attachments delivered by the connector. An MCP surface (`list/read/publish_chat_artifact`) is a later interoperability layer, not a prerequisite. |
 | Browser approval instead of connector passwords | Distribution must never require copying a groupwork password into `.env`. A short-lived loopback authorization transfers the existing browser session to the explicitly approved local CLI and stores it with restricted permissions. |
 
 ## Session Notes — Post-restore fixes
 
-- **Regression testing scope for MVP:** keep the ten fast connector tests and
+- **Regression testing scope for MVP:** keep the eighteen fast connector tests and
   run them after connector/judgment changes. The Playwright + live Supabase
   suite has been scaffolded and partially exercised, but stabilization is
   deliberately deferred until the UI and workflows stop changing rapidly.
@@ -218,5 +221,5 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - ✅ RLS gap: person visibility (`006`/`007`) — chat-mates can see each other's person rows. Fixed recursion via `current_person_id()` helper function.
 - ✅ `008` — `message_mention` join table + `agent_binding` RLS policies.
 - ✅ `009` — `project_path` column on `agent_binding`.
-- ⚠️ RLS policies for `private_thread_message`, `topic_trust`, `judgment_event`, `agent_binding` (update/presence) — enabled but zero policies = fully locked. Add as each feature is built.
-- ⚠️ Replication enabled for: `message`, `message_mention`, `agent_binding`. Verify `private_thread_message` is enabled when private thread UI is built.
+- ✅ RLS policies for private drafts, judgment events, agent bindings, explicit agent mentions, run requests and summaries have been exercised in live UAT. The repository still needs a consolidated baseline migration before a fresh project can be reproduced from source alone.
+- ✅ Realtime has been exercised for messages, edits, bindings, private drafts, explicit agent mentions, run requests and summaries. Publication membership should be rechecked during the clean database rehearsal.

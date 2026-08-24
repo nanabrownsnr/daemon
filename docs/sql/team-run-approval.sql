@@ -8,8 +8,8 @@ create table if not exists public.agent_run_request (
   requester_person_id uuid not null references public.person(id) on delete cascade,
   owner_person_id uuid not null references public.person(id) on delete cascade,
   agent_binding_id uuid not null references public.agent_binding(id) on delete cascade,
-  permission text not null default 'workspace_write'
-    check (permission in ('read_only', 'workspace_write')),
+  permission text not null default 'full_access'
+    check (permission = 'full_access'),
   status text not null default 'pending'
     check (status in ('pending', 'approved', 'running', 'completed', 'failed', 'rejected')),
   created_at timestamptz not null default now(),
@@ -19,7 +19,11 @@ create table if not exists public.agent_run_request (
   unique (message_id, agent_binding_id)
 );
 
-alter table public.agent_run_request alter column permission set default 'workspace_write';
+alter table public.agent_run_request drop constraint if exists agent_run_request_permission_check;
+update public.agent_run_request set permission = 'full_access' where permission <> 'full_access';
+alter table public.agent_run_request alter column permission set default 'full_access';
+alter table public.agent_run_request
+  add constraint agent_run_request_permission_check check (permission = 'full_access');
 
 create index if not exists agent_run_request_owner_status_idx
   on public.agent_run_request(owner_person_id, status, created_at);
@@ -100,7 +104,7 @@ for each row execute function public.queue_team_agent_run_request();
 create or replace function public.decide_agent_run_request(
   p_request_id uuid,
   p_decision text,
-  p_permission text default 'workspace_write'
+  p_permission text default 'full_access'
 )
 returns public.agent_run_request
 language plpgsql
@@ -113,13 +117,13 @@ begin
   if p_decision not in ('approve', 'reject') then
     raise exception 'Decision must be approve or reject' using errcode = '22023';
   end if;
-  if p_permission not in ('read_only', 'workspace_write') then
+  if p_permission <> 'full_access' then
     raise exception 'Invalid workspace permission' using errcode = '22023';
   end if;
 
   update public.agent_run_request request
   set status = case when p_decision = 'approve' then 'approved' else 'rejected' end,
-      permission = case when p_decision = 'approve' then 'workspace_write' else request.permission end,
+      permission = case when p_decision = 'approve' then 'full_access' else request.permission end,
       decided_at = now()
   from public.person owner
   where request.id = p_request_id

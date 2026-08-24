@@ -17,6 +17,7 @@ export default function AgentModal({
   const [agentType, setAgentType] = useState("claude_code");
   const [agentLabel, setAgentLabel] = useState("");
   const [projectPath, setProjectPath] = useState("");
+  const [fullAccessAcknowledged, setFullAccessAcknowledged] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -26,6 +27,12 @@ export default function AgentModal({
     e.preventDefault();
     setLoading(true);
     setError(null);
+
+    if (isSolo && !fullAccessAcknowledged) {
+      setError("Acknowledge local access before adding this Solo agent.");
+      setLoading(false);
+      return;
+    }
 
     if (isSolo) {
       const { data: existing } = await supabase
@@ -59,6 +66,7 @@ export default function AgentModal({
     setAgentType("claude_code");
     setAgentLabel("");
     setProjectPath("");
+    setFullAccessAcknowledged(false);
     setLoading(false);
     router.refresh();
   }
@@ -115,6 +123,17 @@ export default function AgentModal({
                 />
                 <p className="text-xs text-neutral-600 mt-1">Absolute path on your machine where the connector will run.</p>
               </div>
+              {isSolo && (
+                <label className="flex items-start gap-2 rounded border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+                  <input
+                    type="checkbox"
+                    checked={fullAccessAcknowledged}
+                    onChange={(event) => setFullAccessAcknowledged(event.target.checked)}
+                    className="mt-0.5 accent-amber-400"
+                  />
+                  <span>I understand that mentioning this Solo agent lets it run commands, modify files, manage processes and access the network with my local user&apos;s permissions.</span>
+                </label>
+              )}
               {error && <p className="text-red-400 text-sm">{error}</p>}
               <div className="flex gap-2 justify-end pt-1">
                 <button type="button" onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200">Cancel</button>

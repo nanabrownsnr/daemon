@@ -17,7 +17,7 @@ export const AGENT_TYPES = {
       ];
 
       const runClaude = (args, fallbackSessionId) => new Promise((resolve) => {
-        console.log(`[daemon] Spawning Claude with args:`, args);
+        console.log(`[groupwork] Spawning Claude with args:`, args);
         const child = spawnProcess("claude", args, {
           cwd: projectDir,
           env: process.env,
@@ -37,24 +37,24 @@ export const AGENT_TYPES = {
         child.stdout.on("data", (data) => {
           const chunk = data.toString();
           stdout += chunk;
-          console.log(`[daemon] [stdout chunk received: ${chunk.length} bytes]`);
+          console.log(`[groupwork] [stdout chunk received: ${chunk.length} bytes]`);
         });
 
         child.stderr.on("data", (data) => {
           const chunk = data.toString();
           stderr += chunk;
-          console.error(`[daemon] [stderr]: ${chunk.trim()}`);
+          console.error(`[groupwork] [stderr]: ${chunk.trim()}`);
         });
 
         child.on("error", (err) => {
-          console.error("[daemon] Failed to start Claude process natively:", err);
+          console.error("[groupwork] Failed to start Claude process natively:", err);
           finish({ response: null, sessionId: fallbackSessionId, failed: true });
         });
 
         child.on("close", (code) => {
-          console.log(`[daemon] Claude process closed with exit code: ${code}`);
-          console.log(`[daemon] Total stdout accumulated: ${stdout.length} characters`);
-          console.log(`[daemon] Total stderr accumulated: ${stderr.length} characters`);
+          console.log(`[groupwork] Claude process closed with exit code: ${code}`);
+          console.log(`[groupwork] Total stdout accumulated: ${stdout.length} characters`);
+          console.log(`[groupwork] Total stderr accumulated: ${stderr.length} characters`);
 
           if (code !== 0) {
             let detail = stderr.trim();
@@ -66,13 +66,13 @@ export const AGENT_TYPES = {
                 detail = "Claude returned a non-JSON error payload.";
               }
             }
-            console.error(`[daemon] Claude exited with code ${code}${detail ? `: ${String(detail).slice(0, 500)}` : "."}`);
+            console.error(`[groupwork] Claude exited with code ${code}${detail ? `: ${String(detail).slice(0, 500)}` : "."}`);
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
 
           if (!stdout || stdout.trim().length === 0) {
-            console.error(`[daemon] FAILURE: Process exited with code 0 but stdout is completely empty.`);
+            console.error(`[groupwork] FAILURE: Process exited with code 0 but stdout is completely empty.`);
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
@@ -81,14 +81,14 @@ export const AGENT_TYPES = {
             const trimmedStdout = stdout.trim();
             const result = JSON.parse(trimmedStdout);
             
-            console.log("[daemon] Successfully parsed JSON output from Claude.");
+            console.log("[groupwork] Successfully parsed JSON output from Claude.");
             
             const agentResponse = result.result && result.result.trim().length > 0 
               ? result.result 
               : null;
 
             if (!agentResponse) {
-              console.warn("[daemon] Parsed JSON successfully, but 'result.result' field was empty or missing.");
+              console.warn("[groupwork] Parsed JSON successfully, but 'result.result' field was empty or missing.");
             }
 
             finish({
@@ -97,9 +97,9 @@ export const AGENT_TYPES = {
               failed: !agentResponse,
             });
           } catch (parseErr) {
-            console.error("[daemon] FAILURE: Failed to parse Claude JSON output.");
-            console.error("[daemon] Parse error details:", parseErr.message);
-            console.error("[daemon] Raw stdout payload that failed parsing:\n-----\n", stdout, "\n-----");
+            console.error("[groupwork] FAILURE: Failed to parse Claude JSON output.");
+            console.error("[groupwork] Parse error details:", parseErr.message);
+            console.error("[groupwork] Raw stdout payload that failed parsing:\n-----\n", stdout, "\n-----");
             
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
           }
@@ -109,18 +109,18 @@ export const AGENT_TYPES = {
       });
 
       if (sessionId) {
-        console.log(`[daemon] Resuming specific session ID: ${sessionId}`);
+        console.log(`[groupwork] Resuming specific session ID: ${sessionId}`);
         const resumed = await runClaude([...baseArgs, "--resume", sessionId], sessionId);
         return { response: resumed.response, sessionId: resumed.sessionId };
       }
 
-      console.log(`[daemon] No session ID yet, using --continue for latest conversation.`);
+      console.log(`[groupwork] No session ID yet, using --continue for latest conversation.`);
       const continued = await runClaude([...baseArgs, "--continue"], null);
       if (!continued.failed) {
         return { response: continued.response, sessionId: continued.sessionId };
       }
 
-      console.log("[daemon] No resumable Claude conversation found; starting a new one.");
+      console.log("[groupwork] No resumable Claude conversation found; starting a new one.");
       const created = await runClaude(baseArgs, null);
       return { response: created.response, sessionId: created.sessionId };
     },
@@ -151,7 +151,7 @@ export const AGENT_TYPES = {
 
         const finishCompletedTurn = () => {
           if (!response || settled) return;
-          console.log("[daemon] Codex turn completed; returning response to Groupwork.");
+          console.log("[groupwork] Codex turn completed; returning response to groupwork.");
           // A detached server can keep inherited descriptors open, preventing
           // Node's `close` event even though Codex has completed its turn.
           // Disconnect our streams without killing the detached workload.
@@ -194,26 +194,26 @@ export const AGENT_TYPES = {
         });
 
         child.on("error", (error) => {
-          console.error("[daemon] Failed to start Codex CLI:", error.message);
+          console.error("[groupwork] Failed to start Codex CLI:", error.message);
           finish({ response: null, sessionId: fallbackSessionId, failed: true });
         });
 
         child.on("close", (code) => {
           consumeLine(lineBuffer);
           if (code !== 0) {
-            console.error(`[daemon] Codex exited with code ${code}: ${stderr.trim()}`);
+            console.error(`[groupwork] Codex exited with code ${code}: ${stderr.trim()}`);
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
 
           if (parseError && !response) {
-            console.error("[daemon] Failed to parse Codex JSONL output:", parseError.message);
+            console.error("[groupwork] Failed to parse Codex JSONL output:", parseError.message);
             finish({ response: null, sessionId: fallbackSessionId, failed: true });
             return;
           }
 
           if (!response) {
-            console.error("[daemon] Codex completed without an agent message.");
+            console.error("[groupwork] Codex completed without an agent message.");
           }
           finish({ response, sessionId: newSessionId, failed: false });
         });
@@ -236,7 +236,7 @@ export const AGENT_TYPES = {
         : ["--sandbox", "read-only", "exec"];
 
       if (sessionId) {
-        console.log(`[daemon] Resuming Codex session ID: ${sessionId}`);
+        console.log(`[groupwork] Resuming Codex session ID: ${sessionId}`);
         const result = await runCodex([
           ...baseArgs,
           "resume", "--json", "--skip-git-repo-check", sessionId, prompt,
@@ -244,7 +244,7 @@ export const AGENT_TYPES = {
         return { response: result.response, sessionId: result.sessionId };
       }
 
-      console.log(`[daemon] Attaching to the latest Codex session in ${projectDir}.`);
+      console.log(`[groupwork] Attaching to the latest Codex session in ${projectDir}.`);
       const latest = await runCodex([
         ...baseArgs,
         "resume", "--last", "--json", "--skip-git-repo-check", prompt,
@@ -254,7 +254,7 @@ export const AGENT_TYPES = {
         return { response: latest.response, sessionId: latest.sessionId };
       }
 
-      console.log("[daemon] No resumable Codex session found; starting a new one.");
+      console.log("[groupwork] No resumable Codex session found; starting a new one.");
       const created = await runCodex([
         ...baseArgs,
         "--json", "--skip-git-repo-check", prompt,

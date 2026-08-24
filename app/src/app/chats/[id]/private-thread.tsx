@@ -24,7 +24,7 @@ type AgentBinding = {
 type RunRequest = {
   id: string;
   status: "pending" | "approved" | "running" | "completed" | "failed" | "rejected";
-  permission: "read_only" | "workspace_write";
+  permission: "full_access";
   created_at: string;
   agent_binding_id: string;
   message: {
@@ -196,7 +196,7 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
   async function decideRunRequest(
     request: RunRequest,
     decision: "approve" | "reject",
-    permission: "read_only" | "workspace_write" = "read_only"
+    permission: "full_access" = "full_access"
   ) {
     setLoading(request.id);
     setRequestError(null);
@@ -240,7 +240,7 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
       .single();
 
     if (error) {
-      console.error("[daemon] Failed to send draft:", error.message);
+      console.error("[groupwork] Failed to send draft:", error.message);
       setLoading(null);
       return;
     }
@@ -368,10 +368,14 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
                 <p className="text-xs text-neutral-500">From {request.message?.sender?.display_name ?? "a teammate"}</p>
                 <p className="text-sm text-neutral-200">{request.message?.body ?? "Requested agent work"}</p>
                 {(request.status === "pending" || request.status === "failed") && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-300/80">
+                      Accepting runs this request with your local agent&apos;s full terminal permissions.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => decideRunRequest(request, "approve", "workspace_write")}
+                      onClick={() => decideRunRequest(request, "approve", "full_access")}
                       disabled={loading === request.id}
                       className="rounded bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-900 disabled:opacity-50"
                     >
@@ -385,6 +389,7 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
                     >
                       Reject
                     </button>
+                    </div>
                   </div>
                 )}
               </div>

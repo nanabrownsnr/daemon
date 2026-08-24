@@ -1,5 +1,5 @@
 {
-  "name": "daemon",
+  "name": "groupwork",
   "private": true,
   "scripts": {
     "test:regression": "npm --prefix connector test && npm --prefix app run test:e2e",

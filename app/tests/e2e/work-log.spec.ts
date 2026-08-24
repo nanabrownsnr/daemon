@@ -28,6 +28,7 @@ let memberDb: SupabaseClient;
 let ownerPersonId: string;
 let memberPersonId: string;
 let chatId: string;
+let soloChatId: string;
 let bindingId: string;
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const chatName = `regression-${runId}`;
@@ -101,6 +102,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (chatId) await ownerDb.from("chat").delete().eq("id", chatId);
+  if (soloChatId) await ownerDb.from("chat").delete().eq("id", soloChatId);
   await Promise.all([ownerDb?.auth.signOut(), memberDb?.auth.signOut()]);
 });
 
@@ -174,9 +176,21 @@ test("realtime human messaging and structured mentions", async ({ browser }) => 
   const { data: mentions } = await memberDb.from("message_mention").select("person_id").eq("message_id", message!.id);
   expect(mentions).toEqual(expect.arrayContaining([{ person_id: ownerPersonId }]));
 
-  // User A is the only regression user with an agent binding. Their locally
-  // running connector should process B's mention and create an Advice draft
-  // because this freshly generated topic has not earned Act trust.
+  // Team work is gated before local execution. User A must explicitly accept
+  // the request before their connector can invoke the bound agent.
+  await expect.poll(async () => {
+    const { data } = await ownerDb
+      .from("agent_run_request")
+      .select("id, status")
+      .eq("message_id", message!.id)
+      .eq("agent_binding_id", bindingId)
+      .single();
+    return data?.status ?? null;
+  }, { timeout: 15_000 }).toBe("pending");
+  await ownerPage.getByRole("button", { name: "Accept", exact: true }).click();
+
+  // The locally running connector should now process the accepted request and
+  // create an Advice draft because this new binding has not earned Act trust.
   await expect.poll(async () => {
     const { data } = await ownerDb
       .from("private_thread_message")
@@ -192,6 +206,41 @@ test("realtime human messaging and structured mentions", async ({ browser }) => 
     timeout: 120_000,
   }).not.toBeNull();
   await Promise.all([ownerContext.close(), memberContext.close()]);
+});
+
+test("Solo chat requires access consent and supports two named agents", async ({ page }) => {
+  await login(page, env.REGRESSION_USER_A_EMAIL, env.REGRESSION_USER_A_PASSWORD);
+  await page.goto("/chats");
+  await page.getByRole("button", { name: "+ new chat", exact: true }).click();
+  await page.getByRole("radio", { name: "Solo" }).check();
+  await page.getByPlaceholder("Chat name").fill(`solo-${runId}`);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  soloChatId = new URL(page.url()).pathname.split("/").at(-1)!;
+
+  const agentsSection = page.locator("section").filter({ has: page.getByRole("button", { name: "Agents", exact: true }) });
+  await agentsSection.getByRole("button", { name: "+ add", exact: true }).click();
+  await page.getByPlaceholder("e.g. Backend agent").fill(`Solo Claude ${runId}`);
+  await page.getByPlaceholder("/home/you/code/my-project").fill(env.REGRESSION_AGENT_PROJECT_PATH);
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Add agent" }).click();
+
+  await agentsSection.getByRole("button", { name: "+ add", exact: true }).click();
+  await page.getByRole("combobox").selectOption("codex_cli");
+  await page.getByPlaceholder("e.g. Backend agent").fill(`Solo Codex ${runId}`);
+  await page.getByPlaceholder("/home/you/code/my-project").fill(env.REGRESSION_AGENT_PROJECT_PATH);
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Add agent" }).click();
+
+  const { data: bindings, error } = await ownerDb
+    .from("agent_binding")
+    .select("agent_type, agent_label")
+    .eq("chat_id", soloChatId)
+    .order("created_at");
+  expect(error).toBeNull();
+  expect(bindings).toEqual(expect.arrayContaining([
+    expect.objectContaining({ agent_type: "claude_code", agent_label: `Solo Claude ${runId}` }),
+    expect.objectContaining({ agent_type: "codex_cli", agent_label: `Solo Codex ${runId}` }),
+  ]));
 });
 
 test("private drafts, judgment events, RLS, rule engine, and presence", async ({ page }) => {

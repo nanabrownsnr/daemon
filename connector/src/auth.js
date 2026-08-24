@@ -10,11 +10,11 @@ import {
   unlinkSync,
   writeFileSync,
 } from "fs";
-import { homedir, platform } from "os";
+import { platform } from "os";
 import { join } from "path";
 import { APP_URL, SUPABASE_ANON_KEY, SUPABASE_URL } from "./config.js";
+import { CONFIG_DIR } from "./paths.js";
 
-const CONFIG_DIR = process.env.DAEMON_CONFIG_DIR ?? join(homedir(), ".daemon");
 const AUTH_FILE = join(CONFIG_DIR, "auth.json");
 const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 
@@ -60,7 +60,7 @@ function openBrowser(url) {
   const args = os === "win32" ? ["/c", "start", "", url] : [url];
   const child = spawn(command, args, { detached: true, stdio: "ignore" });
   child.on("error", () => {
-    console.log(`[daemon] Open this URL in your browser:\n${url}`);
+    console.log(`[groupwork] Open this URL in your browser:\n${url}`);
   });
   child.unref();
 }
@@ -68,7 +68,7 @@ function openBrowser(url) {
 export async function getAuthenticatedClient() {
   const saved = readSession();
   if (!saved?.access_token || !saved?.refresh_token) {
-    throw new Error("Not logged in. Run: daemon-connect login");
+    throw new Error("Not logged in. Run: groupwork-connect login");
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -76,7 +76,7 @@ export async function getAuthenticatedClient() {
   });
   const { data, error } = await supabase.auth.setSession(saved);
   if (error || !data.session) {
-    throw new Error(`Saved login is invalid. Run daemon-connect login again. ${error?.message ?? ""}`.trim());
+    throw new Error(`Saved login is invalid. Run groupwork-connect login again. ${error?.message ?? ""}`.trim());
   }
   writeSession(data.session);
   supabase.auth.onAuthStateChange((_event, session) => {
@@ -147,15 +147,15 @@ export async function login({ timeoutMs = 5 * 60_000, appUrl = getConnectorAppUr
       });
     });
 
-    const timer = setTimeout(() => finish(new Error("Login timed out. Run daemon-connect login again.")), timeoutMs);
+    const timer = setTimeout(() => finish(new Error("Login timed out. Run groupwork-connect login again.")), timeoutMs);
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
       const callback = `http://127.0.0.1:${address.port}/callback`;
       const authorizeUrl = new URL("/connector/authorize", appUrl);
       authorizeUrl.searchParams.set("callback", callback);
       authorizeUrl.searchParams.set("state", state);
-      console.log("[daemon] Opening groupwork to authorize this connector...");
-      console.log(`[daemon] If the browser does not open, visit:\n${authorizeUrl}`);
+      console.log("[groupwork] Opening groupwork to authorize this connector...");
+      console.log(`[groupwork] If the browser does not open, visit:\n${authorizeUrl}`);
       openBrowser(authorizeUrl.toString());
     });
     server.on("error", (error) => finish(error));
