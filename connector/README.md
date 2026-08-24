@@ -22,6 +22,12 @@ groupwork-connect login --app-url https://your-groupwork-site.example
 groupwork-connect doctor
 ```
 
+If npm reports `EACCES` for `/usr/local`, the machine's global npm directory is
+root-owned. On Linux, use `sudo npm install -g ./groupwork-connector.tgz` (and
+`sudo npm uninstall -g @daemon/connect` when upgrading from the old private-beta
+package). Do not use `sudo` when global npm installs already work without it;
+a user-owned Node installation such as nvm avoids this requirement.
+
 ## Running
 
 ```bash
