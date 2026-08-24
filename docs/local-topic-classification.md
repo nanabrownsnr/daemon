@@ -33,8 +33,9 @@ Apply `docs/sql/topic-classification.sql` before installing connector 0.6.0.
 
 ## Dependency note
 
-Transformers.js currently reports transitive high-severity npm advisories in
-native image/archive dependencies. groupwork's classifier accepts only plain
-text and does not invoke image decoding or accept archive input, so those
-reported vulnerable paths are not exposed by this feature. Recheck `npm audit`
-before public release and upgrade as soon as patched upstream versions exist.
+Transformers.js 4.2.0 declares vulnerable older ranges for `adm-zip` and
+`sharp`. The connector pins npm overrides to patched `adm-zip` 0.6.0 and
+`sharp` 0.35.3. A clean install, real MiniLM inference, connector regression
+suite, and live `npm audit --omit=dev` all pass with these versions. Re-run all
+four checks whenever Transformers.js or either override changes; remove the
+overrides once upstream adopts compatible patched versions.

@@ -72,11 +72,10 @@ npm --prefix app exec tsc -- --noEmit
 Once the staging accounts and connector are ready, run `npm run check:prod`
 from the repository root.
 
-## Known private-UAT exception
+## Classifier dependency verification
 
-`npm audit --omit=dev` currently reports four high-severity transitive
-advisories in the local-classifier dependency chain (`onnxruntime-node` /
-`adm-zip` and `sharp`) with no upstream fix. The connector only uses text
-embeddings and does not accept ZIP or image inputs, so this is accepted for the
-small, known-tester UAT only. Resolve or formally review it before public npm
-distribution.
+Connector 0.6.0 overrides the vulnerable transitive ranges to `adm-zip` 0.6.0
+and `sharp` 0.35.3. Before distributing a newly packed connector, require a
+clean install, `npm audit --omit=dev`, connector tests, and one real cached or
+fresh MiniLM inference. Do not update Transformers.js or remove these overrides
+without repeating those checks.
