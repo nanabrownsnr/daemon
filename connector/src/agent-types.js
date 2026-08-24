@@ -11,7 +11,9 @@ export const AGENT_TYPES = {
         "--print", prompt,
         "--output-format", "json",
         "--allowedTools", allowedTools,
-        "--permission-mode", "dontAsk"
+        ...(options.fullAccess
+          ? ["--dangerously-skip-permissions"]
+          : ["--permission-mode", "dontAsk"]),
       ];
 
       const runClaude = (args, fallbackSessionId) => new Promise((resolve) => {
@@ -219,7 +221,9 @@ export const AGENT_TYPES = {
         child.stdin.end();
       });
 
-      const baseArgs = options.workspaceWrite
+      const baseArgs = options.fullAccess
+        ? ["--dangerously-bypass-approvals-and-sandbox", "exec"]
+        : options.workspaceWrite
         // --approve-for-me already selects Codex's workspace-write sandbox;
         // passing --sandbox with it is rejected by current Codex CLI versions.
         ? [

@@ -99,7 +99,9 @@ test("Solo prompt keeps the selected agent identity", async () => {
   assert.match(prompt, /Codex backend/);
   assert.match(prompt, /private Solo workspace/);
   assert.match(prompt, /explicitly addressed/);
-  assert.match(prompt, /inspect and modify files/);
+  assert.match(prompt, /inspect and modify the project/);
+  assert.match(prompt, /full host access/);
+  assert.match(prompt, /manage local processes and ports across invocations/);
   assert.match(prompt, /Complete the requested action in a bounded way/);
   assert.match(prompt, /always return a response to the group/);
   assert.match(prompt, /fully detached in the background/);
@@ -305,7 +307,7 @@ test("Codex returns a completed turn without waiting for inherited streams to cl
   });
 });
 
-test("Solo adapters receive writable workspace permissions", async () => {
+test("Solo adapters receive full local permissions", async () => {
   const claudeInvocations = [];
   const claudeSpawn = (command, args, options) => {
     claudeInvocations.push({ command, args, options });
@@ -319,9 +321,12 @@ test("Solo adapters receive writable workspace permissions", async () => {
     });
     return child;
   };
-  await AGENT_TYPES.claude_code.invoke("Prompt", "/tmp/project", "old-session", claudeSpawn, { workspaceWrite: true });
+  await AGENT_TYPES.claude_code.invoke("Prompt", "/tmp/project", "old-session", claudeSpawn, {
+    workspaceWrite: true,
+    fullAccess: true,
+  });
   assert.ok(claudeInvocations[0].args.includes("Read,Grep,Glob,LS,Edit,Write,Bash"));
-  assert.ok(!claudeInvocations[0].args.includes("--dangerously-skip-permissions"));
+  assert.ok(claudeInvocations[0].args.includes("--dangerously-skip-permissions"));
 
   const codexInvocations = [];
   const codexSpawn = (command, args, options) => {
@@ -344,11 +349,10 @@ test("Solo adapters receive writable workspace permissions", async () => {
     "/tmp/project",
     "old-thread",
     codexSpawn,
-    { workspaceWrite: true, networkAccess: true },
+    { workspaceWrite: true, networkAccess: true, fullAccess: true },
   );
-  assert.ok(codexInvocations[0].args.includes("--approve-for-me"));
-  assert.ok(!codexInvocations[0].args.includes("--sandbox"));
-  assert.ok(codexInvocations[0].args.includes("sandbox_workspace_write.network_access=true"));
+  assert.ok(codexInvocations[0].args.includes("--dangerously-bypass-approvals-and-sandbox"));
+  assert.ok(!codexInvocations[0].args.includes("--approve-for-me"));
 });
 
 test("Codex first invocation tries the latest project session before creating one", async () => {

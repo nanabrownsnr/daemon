@@ -128,6 +128,7 @@ async function invokeAgent(binding) {
     {
       workspaceWrite: binding._workspaceWrite === true,
       networkAccess: binding._networkAccess === true,
+      fullAccess: binding._fullAccess === true,
     },
   );
 
@@ -203,7 +204,9 @@ export async function buildPrompt(supabase, triggerMessage, chatId, personDispla
     : `You are the technical counterpart and proxy for ${personDisplayName} within an engineering team group chat. Your job is to field questions, extract insights from the local project files in your directory, and speak directly with the authority and voice of ${personDisplayName}.`;
 
   const workDirective = (options.workspaceWrite ?? options.isSolo)
-    ? "You may inspect and modify files inside your assigned project workspace, run appropriate local validation, and use network access when required by the task. Do not perform destructive actions, publish externally, or expand beyond the approved request."
+    ? options.isSolo
+      ? `This is ${personDisplayName}'s private Solo workspace and the local connector has granted you full host access for the explicitly requested work. You may inspect and modify the project, run commands, manage local processes and ports across invocations, and use the network. Stay within the request; do not perform destructive actions or publish externally unless ${personDisplayName} explicitly asks.`
+      : "You may inspect and modify files inside your assigned project workspace, run appropriate local validation, and use network access when required by the task. Do not perform destructive actions, publish externally, or expand beyond the approved request."
     : "Inspect the assigned project workspace to answer the team. This invocation is read-only; report the change needed rather than modifying files.";
 
   return `Role: ${roleDirective}
@@ -354,6 +357,7 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
   binding._isSolo = isSolo;
   binding._workspaceWrite = isSolo || options.workspaceWrite === true;
   binding._networkAccess = isSolo || options.networkAccess === true;
+  binding._fullAccess = isSolo;
 
   binding._beginWork?.();
   try {
