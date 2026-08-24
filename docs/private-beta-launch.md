@@ -43,7 +43,7 @@ private-beta project and review SQL errors rather than skipping a failed step.
 1. Install and authenticate Claude Code or Codex CLI.
 2. Download connector 0.6.0 from `/connector` and install it from the download
    directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
-3. Run `groupwork-connect login --app-url https://your-deployed-origin`.
+3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
    `groupwork-connect start`. Doctor must report a topic catalog version before
    the connector is considered UAT-ready.

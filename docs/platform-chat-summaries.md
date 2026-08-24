@@ -29,7 +29,7 @@ CLI alternative after linking the project:
 supabase secrets set OPENROUTER_API_KEY=replace_me
 supabase secrets set OPENROUTER_SUMMARY_MODEL=z-ai/glm-5.2:free
 supabase secrets set SUMMARY_WEBHOOK_SECRET=replace_with_random_value
-supabase secrets set GROUPWORK_APP_URL=https://your-groupwork-app.example
+supabase secrets set GROUPWORK_APP_URL=https://groupwork-ai.vercel.app
 ```
 
 ## 3. Deploy

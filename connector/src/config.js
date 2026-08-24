@@ -9,5 +9,5 @@ export const SUPABASE_ANON_KEY = process.env.GROUPWORK_SUPABASE_ANON_KEY
 export const APP_URL = (
   process.env.GROUPWORK_APP_URL
   ?? process.env.DAEMON_APP_URL
-  ?? "http://localhost:3000"
+  ?? "https://groupwork-ai.vercel.app"
 ).replace(/\/$/, "");

@@ -18,7 +18,7 @@ computer in the browser. The connector does not ask for or store your password.
 
 ```bash
 npm install -g ./groupwork-connector.tgz
-groupwork-connect login --app-url https://your-groupwork-site.example
+groupwork-connect login --app-url https://groupwork-ai.vercel.app
 groupwork-connect doctor
 ```
 
