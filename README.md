@@ -14,6 +14,8 @@ directly.
   for mentions, invokes the selected agent in the configured project, and routes the
   response.
 - `docs/groupwork-work-log.md` — current product status, decisions, and backlog.
+- `docs/private-beta-launch.md` — email-confirmation, database, deployment, and
+  second-computer acceptance checklist.
 - Supabase provides Postgres, Auth, Realtime, and Presence.
 
 ## Current flow

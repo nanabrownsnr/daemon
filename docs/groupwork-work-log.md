@@ -18,6 +18,20 @@
 
 The unit of work is shifting from person → person+agent. The unsolved bottleneck isn't capability — it's **judgment**: knowing when to speak, when to draft and wait, when to stay silent. That judgment has to be learned per person, per relationship, over time — which means memory isn't a feature, it's the substrate judgment runs on.
 
+## MVP Product Guardrails
+
+- **Team is the core product:** a human brings one project-bound agent into a
+  team conversation; other people request its help through that human.
+- **Solo is a proving workspace:** one human may coordinate multiple named
+  agents, but agents do not autonomously trigger one another.
+- **Execution and publication are separate:** Team work requires owner Accept
+  before reaching the local runtime; Advice/Act/Judgment determines whether the
+  resulting response needs review before entering the shared chat.
+- **The platform owns judgment and shared context:** connectors execute local
+  work; they do not independently decide trust, approval, routing, or summaries.
+- **Git remains the source of truth for code:** groupwork coordinates discussion
+  and handoff rather than syncing whole project directories.
+
 ---
 
 ## What's Done ✅
@@ -35,7 +49,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector: multi-binding aware | One connector process manages all chats/agents for a person. Team mentions resolve the person's single chat binding; Solo mentions route by exact binding ID so agents never replace one another. |
 | Agent type registry (`agent-types.js`) | Claude Code and Codex CLI are implemented behind the same invocation contract. Both are exposed in the binding UI. |
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
-| `last_seen` timestamp | Startup catch-up only fetches mentions since last processed. |
+| Per-binding catch-up cursor | Startup catch-up fetches only mentions not successfully processed by that exact binding. One agent cannot advance another agent's cursor. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
 | Connector regression tests | Eighteen fast Node tests cover classification, layered summary/recent-context prompts, Team/Solo prompt construction and binding resolution, per-binding execution serialization, permission boundaries, Advice/Act/Judgment routing, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex invocation and continuity. Keep these running during MVP development. |
 | Per-binding execution queue | ✅ Invocations for one binding are serialized so a second mention cannot concurrently resume the same Claude/Codex session. Different bindings remain concurrent. |
@@ -49,7 +63,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is persisted per binding and resumed exactly. Solo and accepted Team work use native-style full local access. Completed JSONL turns return immediately even when a detached server keeps inherited streams open. |
 | Codex sandbox compatibility | ✅ Read-only adapter calls retain the Codex sandbox. Authorized Solo and accepted Team work deliberately use the runtime's native full-access automation mode, matching the execution consent shown in the UI. |
 | Connector browser authorization | ✅ `groupwork-connect login` opens the signed-in web app for explicit loopback authorization. The connector stores refreshable session tokens with `0600` permissions and never receives or stores the user's password. Logout removes the local session. |
-| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. Both `groupwork-connect` and legacy `groupwork-connect` bins work. The website `/connector` page provides download and setup instructions. Public npm publication remains gated on the final package name, deployed app URL, and a second physical-machine UAT. |
+| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. The canonical `groupwork-connect` CLI and website `/connector` download/setup instructions are ready. Public npm publication remains optional and gated on a deployed app URL plus second physical-machine UAT. |
 | Connector doctor | ✅ Checks saved login, Supabase identity, bindings, required Claude/Codex installation, local project paths, and website reachability before start. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
@@ -57,6 +71,19 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Chat-list cleanup | Clearer page hierarchy, contained create form, consistent conversation cards/actions, responsive spacing, empty state, and typed relation mapping. |
 
 ---
+
+## Private-beta launch gate
+
+- [ ] Keep signup limited to known private testers. Before opening signup externally, configure custom SMTP, enable email confirmation, point the Confirm signup template at `/auth/confirm`, and verify a new account lands in connector onboarding.
+- [ ] Apply the current SQL runbooks and rehearse Team Accept, Solo multi-agent targeting, atomic sends, correction/demotion, and connector catch-up.
+- [ ] Deploy the web app and verify browser authorization uses its HTTPS origin.
+- [ ] Install connector 0.5.0 on a second physical computer; run login, doctor, start, pause, resume, and logout.
+- [ ] Run the fast connector suite, launch-critical Playwright flow, TypeScript, lint, and production build.
+- [ ] Verify two-user RLS boundaries and rotate any credential exposed during development.
+
+Feature scope is frozen for this gate. Pairwise trust, learned inbound approval,
+shared artifacts, organizations/billing, desktop packaging, push notifications,
+and autonomous agent loops remain post-MVP.
 
 ## Product Backlog (ordered by value)
 
@@ -67,7 +94,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | 1 | ✅ **Real API key test (Claude Code)** | End-to-end mention → Claude Code invocation against the real project → routed response confirmed working. | — |
 | 3 | ✅ **Private thread UI** | Sidebar panel shows agent drafts with send / edit / cancel / handle-myself actions. Captures `first_viewed_at`, `edit_distance`, `response_time_ms`, `judgment_event` rows on every action. | — |
 | 4 | ✅ **RLS policies for `private_thread_message`** | Added in migration 010. Person can read/write own private thread. | — |
-| 5 | ✅ **Mode toggle in UI** | Pill segmented control (Advice \| Act) per agent binding. Optimistic update — flips instantly, reverts on DB failure. Agent modal moved to sidebar "+ add" button. | — |
+| 5 | ✅ **Mode toggle in UI** | Pill segmented control (Advice \| Act \| Judgment) per agent binding. Optimistic update flips instantly and reverts on DB failure. Agent modal lives behind the sidebar "+ add" action. | — |
 
 ### P1 — Makes the product feel real and trustworthy
 
@@ -121,7 +148,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Agent type + project path stored in DB, not .env | One connector process manages all a person's bindings across all chats |
 | @ mention autocomplete resolves to person_id | UI handles disambiguation (two Nanas), DB stores resolved ID — no text parsing needed |
 | `message_mention` join table (not a column) | Correctly handles multiple mentions per message. Many-to-many = join table |
-| Judgment mode is the concurrency control | Act = dev is off the clock (single consumer of session). Advice = human gates when resume fires. No infrastructure locking needed. |
+| Per-binding queues control session concurrency | Advice/Act/Judgment control publication, not invocation locking. The connector serializes work for each binding so one Claude/Codex session has one writer, while different bindings can run concurrently. |
 | Renamed Suggested/Auto → Advice/Act | Clearer product language. Required a full enum migration (`response_mode` type) since the DB enum was never updated when the app-level naming changed — this caused a real bug (silent insert failures on every agent message) until caught and fixed in migration 015. |
 | Agent message attribution: "Sent by [Name]'s groupwork" | Shown under every agent-sent message, visible to all chat members, not just the sender. "On behalf of" was considered but rejected — inaccurate tense for something already sent. |
 | Connector-owned Claude Code session (separate session_id) | Avoids race condition with interactive session. `--resume` provides continuity within groupwork-triggered Q&A specifically |
