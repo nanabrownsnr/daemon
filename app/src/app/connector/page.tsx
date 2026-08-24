@@ -36,20 +36,20 @@ export default function ConnectorSetupPage() {
             <p className="font-medium">3. Download and install the private-beta connector</p>
             <p className="mt-1 text-neutral-500">First, download the connector package to your computer.</p>
             <a
-              href="/downloads/groupwork-connect-0.7.0.tgz"
+              href="/downloads/groupwork-connect-0.7.1.tgz"
               download
               className="mt-2 inline-block text-neutral-300 underline underline-offset-4 hover:text-white"
             >
-              Download connector 0.7.0
+              Download connector 0.7.1
             </a>
             <p className="mt-3 text-neutral-500">Then open a terminal in the folder where you downloaded it and run:</p>
-            <CopyCommand command="npm install -g ./groupwork-connect-0.7.0.tgz" />
+            <CopyCommand command="npm install -g ./groupwork-connect-0.7.1.tgz" />
             <p className="mt-2 text-neutral-500">
               For example, if it is in your Downloads folder: <code className="text-neutral-300">cd ~/Downloads</code>
             </p>
             <div className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-neutral-500">
               <p>If npm reports <code className="text-neutral-300">EACCES</code> for <code className="text-neutral-300">/usr/local</code>, your global npm installation is system-owned. On Linux, rerun the install with:</p>
-              <CopyCommand command="sudo npm install -g ./groupwork-connect-0.7.0.tgz" />
+              <CopyCommand command="sudo npm install -g ./groupwork-connect-0.7.1.tgz" />
               <p>Existing private-beta users may first need:</p>
               <CopyCommand command="sudo npm uninstall -g @daemon/connect" />
               <p className="text-xs text-neutral-600">Do not use sudo when npm already installs global packages without it. A user-owned Node installation such as nvm avoids this requirement.</p>

@@ -3,7 +3,6 @@ import { spawn } from "child_process";
 export const AGENT_TYPES = {
   claude_code: {
     label: "Claude Code",
-    supportsTextStreaming: true,
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const allowedTools = options.workspaceWrite
         ? "Read,Grep,Glob,LS,Edit,Write,Bash"
@@ -12,7 +11,6 @@ export const AGENT_TYPES = {
         "--print", prompt,
         "--output-format", "stream-json",
         "--verbose",
-        "--include-partial-messages",
         "--allowedTools", allowedTools,
         ...(options.fullAccess
           ? ["--dangerously-skip-permissions"]
@@ -35,7 +33,6 @@ export const AGENT_TYPES = {
         let finalResponse = null;
         let discoveredSessionId = fallbackSessionId;
         let parseError = null;
-        let partialResponse = "";
 
         const finish = (result) => {
           if (settled) return;
@@ -66,17 +63,7 @@ export const AGENT_TYPES = {
             }
             if (event.type === "assistant") {
               const assistantText = textFromContent(event.message?.content ?? event.content);
-              if (assistantText) {
-                streamedResponse = assistantText;
-                if (!partialResponse) options.onText?.(assistantText);
-              }
-            }
-            if (event.type === "stream_event"
-                && event.event?.type === "content_block_delta"
-                && event.event.delta?.type === "text_delta"
-                && typeof event.event.delta.text === "string") {
-              partialResponse += event.event.delta.text;
-              if (partialResponse.trim()) options.onText?.(partialResponse);
+              if (assistantText) streamedResponse = assistantText;
             }
             if (event.type === "result" && typeof event.result === "string" && event.result.trim()) {
               finalResponse = event.result.trim();
@@ -174,10 +161,6 @@ export const AGENT_TYPES = {
   },
   codex_cli: {
     label: "Codex CLI",
-    // Current `codex exec --json` exposes structured lifecycle and completed
-    // agent-message events, not textual deltas. It keeps final delivery until
-    // the CLI exposes a stable delta event.
-    supportsTextStreaming: false,
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const runCodex = (args, fallbackSessionId) => new Promise((resolve) => {
         const child = spawnProcess("codex", args, {

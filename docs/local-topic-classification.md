@@ -1,7 +1,7 @@
 # Local topic classification
 
 groupwork owns the topic catalog, classification records, trust events, and
-Judgment decisions. Connector 0.7.0 only supplies local embedding compute.
+Judgment decisions. Connector 0.7.1 only supplies local embedding compute.
 
 ## Runtime behavior
 
@@ -29,7 +29,7 @@ agent_binding_id)`. It records the selected topic, confidence, source, pinned
 model version, and topic-catalog version. This preserves the exact evidence
 used for the historical Judgment decision even after labels or models change.
 
-Apply `docs/sql/topic-classification.sql` before installing connector 0.7.0.
+Apply `docs/sql/topic-classification.sql` before installing connector 0.7.1.
 
 ## Dependency note
 

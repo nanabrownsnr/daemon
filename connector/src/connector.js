@@ -149,7 +149,6 @@ async function invokeAgent(binding) {
       workspaceWrite: binding._workspaceWrite === true,
       networkAccess: binding._networkAccess === true,
       fullAccess: binding._fullAccess === true,
-      onText: binding._onText,
     },
   );
 
@@ -382,101 +381,6 @@ export async function resolveResponseMode(supabase, personId, binding, triggerCl
   return mode;
 }
 
-async function beginResponseStream(supabase, personId, binding, chatId, mode, triggerClassification, triggerMessageId) {
-  if (mode === "act") {
-    const { data, error } = await supabase
-      .from("message")
-      .insert({
-        chat_id: chatId,
-        sender_person_id: personId,
-        sender_type: "agent",
-        agent_binding_id: binding.id,
-        mode: "act",
-        body: "",
-        topic_tag: triggerClassification?.topicTag ?? "general",
-        response_status: "streaming",
-        stream_sequence: 0,
-      })
-      .select("id")
-      .single();
-    if (error) {
-      console.warn(`[groupwork] Chat streaming unavailable; using final delivery: ${error.message}`);
-      return null;
-    }
-    return { id: data.id, destination: "chat", mode };
-  }
-
-  const { data, error } = await supabase
-    .from("private_thread_message")
-    .insert({
-      chat_id: chatId,
-      person_id: personId,
-      agent_binding_id: binding.id,
-      sender_type: "agent",
-      body: "",
-      topic_tag: triggerClassification?.topicTag ?? null,
-      question_type: triggerClassification?.questionType ?? null,
-      trigger_message_id: triggerMessageId ?? null,
-      response_status: "streaming",
-      stream_sequence: 0,
-    })
-    .select("id")
-    .single();
-  if (error) {
-    console.warn(`[groupwork] Private streaming unavailable; using final delivery: ${error.message}`);
-    return null;
-  }
-  return { id: data.id, destination: "private", mode };
-}
-
-function createResponseStreamWriter(supabase, stream) {
-  let latestBody = "";
-  let sequence = 0;
-  let timer = null;
-  let queue = Promise.resolve(true);
-
-  const write = (status) => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    sequence += 1;
-    const body = latestBody;
-    const currentSequence = sequence;
-    queue = queue.then(async () => {
-      const { data, error } = await supabase.rpc("update_agent_response_stream", {
-        p_destination: stream.destination,
-        p_response_id: stream.id,
-        p_body: body,
-        p_sequence: currentSequence,
-        p_status: status,
-      });
-      if (error || data !== true) {
-        console.error(`[groupwork] Failed to update ${stream.destination} response stream: ${error?.message ?? "stream row was not updated"}`);
-        return false;
-      }
-      return true;
-    });
-    return queue;
-  };
-
-  return {
-    push(body) {
-      if (!body || body === latestBody) return;
-      latestBody = body;
-      if (!timer) timer = setTimeout(() => { void write("streaming"); }, 300);
-    },
-    async complete(body) {
-      latestBody = body;
-      return write("completed");
-    },
-    async fail(body = latestBody) {
-      latestBody = body;
-      return write("failed");
-    },
-  };
-}
-
 export async function routeResponse(supabase, personId, binding, chatId, responseBody, triggerClassification = null, triggerMessageId = null, forceAdvice = false, resolvedMode = null) {
   const mode = resolvedMode ?? await resolveResponseMode(
     supabase,
@@ -591,7 +495,6 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
   binding._networkAccess = isSolo || options.networkAccess === true;
   binding._fullAccess = isSolo || options.fullAccess === true;
 
-  const agentDefinition = AGENT_TYPES[binding.agent_type];
   const responseMode = await resolveResponseMode(
     supabase,
     person.id,
@@ -599,53 +502,29 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     classification,
     forceAdvice,
   );
-  const responseStream = agentDefinition?.supportsTextStreaming
-    ? await beginResponseStream(
-        supabase,
-        person.id,
-        binding,
-        msg.chat_id,
-        responseMode,
-        classification,
-        msg.id,
-      )
-    : null;
-  const streamWriter = responseStream
-    ? createResponseStreamWriter(supabase, responseStream)
-    : null;
-  binding._onText = streamWriter ? (body) => streamWriter.push(body) : undefined;
-
-  binding._beginWork?.();
+  binding._beginWork?.(responseMode);
   try {
     const response = await invokeAgent(binding);
     if (!response) {
       console.error("[groupwork] No response from agent.");
-      if (streamWriter) await streamWriter.fail();
       binding._finishWork?.(false);
       return false;
     }
 
-    const routed = streamWriter
-      ? await streamWriter.complete(response)
-      : await routeResponse(
-          supabase,
-          person.id,
-          binding,
-          msg.chat_id,
-          response,
-          classification,
-          msg.id,
-          forceAdvice,
-          responseMode,
-        );
+    const routed = await routeResponse(
+      supabase,
+      person.id,
+      binding,
+      msg.chat_id,
+      response,
+      classification,
+      msg.id,
+      forceAdvice,
+      responseMode,
+    );
     if (!routed) {
       binding._finishWork?.(false);
       return false;
-    }
-    if (streamWriter) {
-      console.log(responseMode === "act"
-        ? "[groupwork] Streamed Act response completed in chat."
-        : "[groupwork] Streamed Advice response completed in Agent Workspace.");
     }
     if (isSolo) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
     storeContextCursor(binding.id, msg.created_at);
@@ -653,11 +532,8 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     return true;
   } catch (error) {
     console.error(`[groupwork] Agent processing failed: ${error.message}`);
-    if (streamWriter) await streamWriter.fail();
     binding._finishWork?.(false);
     return false;
-  } finally {
-    binding._onText = undefined;
   }
 }
 
@@ -778,11 +654,13 @@ export async function start() {
       interval: null,
       errorTimeout: null,
       status: "online",
+      destination: null,
       active: 0,
     };
     const track = async () => {
       await channel.track({
         status: presence.status,
+        destination: presence.destination,
         updated_at: new Date().toISOString(),
       });
     };
@@ -792,13 +670,18 @@ export async function start() {
     presence.interval = setInterval(track, 15_000);
     presenceByBinding.set(binding.id, presence);
   };
-  const beginBindingWork = (bindingId) => {
+  const beginBindingWork = (bindingId, responseMode) => {
     const presence = presenceByBinding.get(bindingId);
     if (!presence) return;
     if (presence.errorTimeout) clearTimeout(presence.errorTimeout);
     presence.active += 1;
     presence.status = "working";
-    void presence.channel.track({ status: "working", updated_at: new Date().toISOString() });
+    presence.destination = responseMode === "act" ? "chat" : "private";
+    void presence.channel.track({
+      status: "working",
+      destination: presence.destination,
+      updated_at: new Date().toISOString(),
+    });
   };
   const finishBindingWork = (bindingId, succeeded) => {
     const presence = presenceByBinding.get(bindingId);
@@ -806,12 +689,13 @@ export async function start() {
     presence.active = Math.max(0, presence.active - 1);
     if (presence.active > 0) return;
     presence.status = succeeded ? "online" : "error";
-    void presence.channel.track({ status: presence.status, updated_at: new Date().toISOString() });
+    presence.destination = null;
+    void presence.channel.track({ status: presence.status, destination: null, updated_at: new Date().toISOString() });
     if (!succeeded) {
       presence.errorTimeout = setTimeout(() => {
         if (presence.active === 0) {
           presence.status = "online";
-          void presence.channel.track({ status: "online", updated_at: new Date().toISOString() });
+          void presence.channel.track({ status: "online", destination: null, updated_at: new Date().toISOString() });
         }
       }, 15_000);
     }
@@ -825,7 +709,7 @@ export async function start() {
     presenceByBinding.delete(bindingId);
   };
   const addOrUpdateBinding = (binding) => {
-    binding._beginWork = () => beginBindingWork(binding.id);
+    binding._beginWork = (responseMode) => beginBindingWork(binding.id, responseMode);
     binding._finishWork = (succeeded) => finishBindingWork(binding.id, succeeded);
     bindingsById[binding.id] = binding;
     const chatBindings = bindingsByChat[binding.chat_id] ?? [];

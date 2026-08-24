@@ -389,47 +389,6 @@ test("Claude recovers the assistant message when the final result event is empty
   assert.deepEqual(result, { response: "Recovered response", sessionId: "stream-session" });
 });
 
-test("Claude streams cumulative text deltas through the adapter capability", async () => {
-  let invocation;
-  const updates = [];
-  const fakeSpawn = (command, args) => {
-    invocation = { command, args };
-    const child = new EventEmitter();
-    child.stdout = new EventEmitter();
-    child.stderr = new EventEmitter();
-    child.stdin = { end() {} };
-    queueMicrotask(() => {
-      child.stdout.emit("data", Buffer.from([
-        JSON.stringify({ type: "system", subtype: "init", session_id: "stream-session" }),
-        JSON.stringify({
-          type: "stream_event",
-          event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hello" } },
-        }),
-        JSON.stringify({
-          type: "stream_event",
-          event: { type: "content_block_delta", delta: { type: "text_delta", text: " world" } },
-        }),
-        JSON.stringify({ type: "result", subtype: "success", result: "Hello world", session_id: "stream-session" }),
-      ].join("\n")));
-      child.emit("close", 0);
-    });
-    return child;
-  };
-
-  const result = await AGENT_TYPES.claude_code.invoke(
-    "Prompt",
-    "/tmp/project",
-    "stream-session",
-    fakeSpawn,
-    { onText: (text) => updates.push(text) },
-  );
-
-  assert.equal(AGENT_TYPES.claude_code.supportsTextStreaming, true);
-  assert.ok(invocation.args.includes("--include-partial-messages"));
-  assert.deepEqual(updates, ["Hello", "Hello world"]);
-  assert.deepEqual(result, { response: "Hello world", sessionId: "stream-session" });
-});
-
 test("Claude first invocation falls back to a new session when continue fails", async () => {
   const invocations = [];
   const fakeSpawn = (command, args, options) => {

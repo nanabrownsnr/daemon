@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useAgentPresence } from "./agent-presence";
 
 type AgentBinding = {
   id: string;
@@ -24,9 +25,7 @@ const AGENT_TYPE_LABELS: Record<string, string> = {
 export default function AgentBindings({ chatId, personId }: Props) {
   const [bindings, setBindings] = useState<AgentBinding[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
-  const [onlineBindings, setOnlineBindings] = useState<Set<string>>(new Set());
-  const [workingBindings, setWorkingBindings] = useState<Set<string>>(new Set());
-  const [failedBindings, setFailedBindings] = useState<Set<string>>(new Set());
+  const { onlineBindings } = useAgentPresence();
   // Keep one browser client for the component lifetime. Recreating it during
   // presence-driven renders tears down and resubscribes every binding channel,
   // which can make an online or working agent briefly appear offline.
@@ -39,42 +38,6 @@ export default function AgentBindings({ chatId, personId }: Props) {
       .eq("chat_id", chatId)
       .then(({ data }) => setBindings(data ?? []));
   }, [chatId, supabase]);
-
-  // presence — subscribe to each binding's presence channel to know if
-  // its connector is currently running
-  useEffect(() => {
-    const channels = bindings.map((b) => {
-      const channel = supabase.channel(`presence:${b.id}`);
-      channel
-        .on("presence", { event: "sync" }, () => {
-          const state = channel.presenceState();
-          const statuses = Object.values(state)
-            .flat()
-            .map((entry) => (entry as { status?: string }).status);
-          setOnlineBindings((prev) => {
-            const next = new Set(prev);
-            if (Object.keys(state).length > 0) next.add(b.id);
-            else next.delete(b.id);
-            return next;
-          });
-          setWorkingBindings((prev) => {
-            const next = new Set(prev);
-            if (statuses.includes("working")) next.add(b.id);
-            else next.delete(b.id);
-            return next;
-          });
-          setFailedBindings((prev) => {
-            const next = new Set(prev);
-            if (statuses.includes("error")) next.add(b.id);
-            else next.delete(b.id);
-            return next;
-          });
-        })
-        .subscribe();
-      return channel;
-    });
-    return () => { channels.forEach((c) => supabase.removeChannel(c)); };
-  }, [bindings, supabase]);
 
   // live updates — picks up new bindings registered while on the page
   useEffect(() => {
@@ -139,22 +102,8 @@ export default function AgentBindings({ chatId, personId }: Props) {
       {bindings.map((b) => {
         const isMe = b.person_id === personId;
         const isOnline = onlineBindings.has(b.id);
-        const isWorking = workingBindings.has(b.id);
-        const hasFailed = failedBindings.has(b.id);
-        const statusTitle = isWorking
-          ? "Agent working"
-          : hasFailed
-            ? "Agent failed — check the connector"
-            : isOnline
-              ? "Connector online"
-              : "Connector offline";
-        const statusClass = isWorking
-          ? "bg-yellow-400 animate-pulse"
-          : hasFailed
-            ? "bg-red-500"
-            : isOnline
-              ? "bg-green-500"
-              : "bg-neutral-600";
+        const statusTitle = isOnline ? "Connector online" : "Connector offline";
+        const statusClass = isOnline ? "bg-green-500" : "bg-neutral-600";
         return (
           <li key={b.id} className="flex items-center gap-2 text-sm">
             {/* presence indicator — reflects whether the connector is actually running */}

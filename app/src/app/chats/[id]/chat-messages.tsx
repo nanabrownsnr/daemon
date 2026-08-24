@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import MessageMarkdown from "./message-markdown";
+import { useAgentPresence } from "./agent-presence";
 
 type Message = {
   id: string;
@@ -13,8 +14,6 @@ type Message = {
   was_edited?: boolean;
   agent_binding_id: string | null;
   topic_tag: string | null;
-  response_status?: "streaming" | "completed" | "failed";
-  stream_sequence?: number;
 };
 
 type Person = {
@@ -87,6 +86,7 @@ export default function ChatMessages({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const { workingBindings, workingDestinations } = useAgentPresence();
 
   const mentionTargets: MentionTarget[] = isSolo
     ? agentBindings.map((binding) => ({
@@ -109,12 +109,12 @@ export default function ChatMessages({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     supabase
       .from("message")
-      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag, response_status, stream_sequence")
+      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag")
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
       .then(({ data }) => setMessages(data ?? []));
@@ -139,7 +139,7 @@ export default function ChatMessages({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, workingBindings]);
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
@@ -310,27 +310,18 @@ export default function ChatMessages({
                         </button>
                       </div>
                     </div>
-                  ) : m.response_status === "streaming" ? (
-                    <p className="whitespace-pre-wrap leading-relaxed">
-                      {m.body || "Agent is working…"}
-                      <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60" />
-                    </p>
                   ) : (
-                    <MessageMarkdown>{m.body || "No response was produced."}</MessageMarkdown>
+                    <MessageMarkdown>{m.body}</MessageMarkdown>
                   )}
                 </div>
                 {m.sender_type === "agent" && (
                   <div className="flex items-center gap-1 px-1 text-neutral-600">
                     <span className="text-xs italic">
-                      {m.response_status === "streaming"
-                        ? "Streaming response"
-                        : m.response_status === "failed"
-                          ? "Agent response failed"
-                          : m.was_edited
+                      {m.was_edited
                         ? `Edited by ${personNames[m.sender_person_id] ?? "Unknown"}`
                         : `Sent by ${agentNames[m.agent_binding_id ?? ""] ?? `${personNames[m.sender_person_id] ?? "Unknown"}'s agent`}`}
                     </span>
-                    {authoredByMe && editingMessageId !== m.id && (m.response_status ?? "completed") === "completed" && (
+                    {authoredByMe && editingMessageId !== m.id && (
                       <button
                         type="button"
                         onClick={() => beginEdit(m)}
@@ -346,6 +337,31 @@ export default function ChatMessages({
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          );
+        })}
+        {agentBindings.filter((binding) =>
+          workingBindings.has(binding.id) && workingDestinations.get(binding.id) === "chat"
+        ).map((binding) => {
+          const label = agentNames[binding.id];
+          return (
+            <div key={`working:${binding.id}`} className="flex justify-start">
+              <div className="flex max-w-[70%] flex-col items-start space-y-0.5">
+                <span className="px-1 text-xs text-neutral-500">{label}</span>
+                <div
+                  className="flex items-center gap-1 rounded-2xl rounded-bl-sm bg-neutral-800 px-4 py-3"
+                  role="status"
+                  aria-label={`${label} is working`}
+                >
+                  {[0, 1, 2].map((index) => (
+                    <span
+                      key={index}
+                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-neutral-400"
+                      style={{ animationDelay: `${index * 140}ms` }}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           );

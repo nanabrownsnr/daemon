@@ -11,6 +11,7 @@ import LogoutButton from "../logout-button";
 import MembersList from "./members-list";
 import CollapsibleSidebarSection from "./collapsible-sidebar-section";
 import ChatSummary from "./chat-summary";
+import { AgentPresenceProvider } from "./agent-presence";
 
 export default async function ChatPage({
   params,
@@ -80,6 +81,7 @@ export default async function ChatPage({
       </div>
 
       {/* Body */}
+      <AgentPresenceProvider bindingIds={(chatBindings ?? []).map((binding) => binding.id)}>
       <ResizableLayout
         main={
           <ChatMessages
@@ -136,6 +138,7 @@ export default async function ChatPage({
           </div>
         }
       />
+      </AgentPresenceProvider>
     </div>
   );
 }

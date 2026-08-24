@@ -34,7 +34,6 @@ Apply the current runbooks before deploying the matching app and connector:
 4. `docs/sql/send-message-atomic.sql`
 5. `docs/sql/chat-context-summary.sql`
 6. `docs/sql/topic-classification.sql`
-7. `docs/sql/agent-response-streaming.sql`
 
 Re-running these current runbooks is intended to be safe, but use the existing
 private-beta project and review SQL errors rather than skipping a failed step.
@@ -42,24 +41,52 @@ private-beta project and review SQL errors rather than skipping a failed step.
 ## New-computer acceptance test
 
 1. Install and authenticate Claude Code or Codex CLI.
-2. Download connector 0.7.0 from `/connector` and install it from the download
+2. Download connector 0.7.1 from `/connector` and install it from the download
    directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
 3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
    `groupwork-connect start`. Doctor must report a topic catalog version before
    the connector is considered UAT-ready.
-5. Confirm the binding becomes green and turns yellow while working.
+5. Confirm the binding becomes green and remains green while a three-dot
+   working bubble appears in the conversation.
    The local topic model may continue downloading in the background; verify
    startup and mention delivery are not blocked while fallback is active.
 6. In a Team chat, mention the owner, Accept the request, and verify execution
    and Advice/Act publication.
 7. In a Solo chat, target Claude and Codex separately and together; verify each
    retains its own project, session, response, and presence state.
-   Verify Claude renders incrementally in Act and Advice; verify Codex still
-   publishes its complete response without creating a duplicate message.
+   Verify each working agent shows a three-dot conversation indicator and then
+   publishes exactly one complete response.
 8. Stop and restart the connector, then verify catch-up is routed through
    Advice and processed only once.
 9. Run pause, resume, and logout once.
+
+## Founder dogfood scenario
+
+Use one real project rather than a synthetic prompt. For the two-laptop test,
+use two groupwork accounts in a Team chat, with one account, connector and
+project-bound agent per laptop:
+
+1. On laptop A, use account A with its project-bound backend agent and complete
+   a concrete backend slice.
+2. Bring that agent into the shared Team chat and ask it to leave a concise
+   status, API contract, validation result, and remaining frontend needs.
+3. On laptop B, use account B with its frontend agent bound to its own
+   workspace. Accept its Team requests and use only the groupwork conversation
+   and project files to begin the frontend—do not manually relay missing
+   context unless the product forces you to.
+4. Record every manual copy/paste, unclear state, missed message, stale
+   presence indicator, incorrect topic, unsafe action, or place where you
+   cannot tell whether an agent is working.
+5. Treat data loss, duplicate execution, cross-user data exposure, an
+   unapproved Team execution, or work applied to the wrong project/session as
+   stop-ship. Treat wording, spacing, and optional convenience as post-UAT.
+
+Do not run two connectors for the same account simultaneously. Connectors are
+currently person-scoped and each subscribes to all bindings owned by that
+person, so a same-account multi-device setup can execute one Solo mention more
+than once. Device-scoped binding ownership or a distributed invocation claim is
+required before that topology is supported.
 
 ## Repository gate
 
