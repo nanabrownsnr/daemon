@@ -85,12 +85,13 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - [ ] Run the fast connector suite, launch-critical Playwright flow, TypeScript, lint, and production build.
 - [ ] Verify two-user RLS boundaries and rotate any credential exposed during development.
 
-Resolved pre-UAT dependency finding: Transformers.js 4.2.0 still declares
-older vulnerable ranges, so connector 0.6.0 overrides `adm-zip` to 0.6.0 and
-`sharp` to 0.35.3. Clean install, real MiniLM inference, regression tests and a
-live production-dependency audit pass. Treat the overrides as an explicit
-compatibility contract and revalidate them on every classifier dependency
-upgrade until upstream adopts the patched versions.
+Known private-UAT exception: `@huggingface/transformers` currently brings four
+high-severity transitive npm advisories through `onnxruntime-node`/`adm-zip` and
+`sharp`, with no upstream fix available in the installed line. The connector's
+text-only classifier does not accept user ZIP/image inputs, which limits the
+identified attack paths, but this dependency must be upgraded, replaced, or
+formally reviewed before public distribution. It is not accepted as a silent
+production risk.
 
 Feature scope is frozen for this gate. Pairwise trust, learned inbound approval,
 shared artifacts, organizations/billing, desktop packaging, push notifications,
