@@ -38,7 +38,7 @@ groupwork connector
 
 Usage:
   groupwork-connect login [--app-url URL]  Authorize this computer in your browser
-  groupwork-connect doctor  Check login, agents, bindings, and project paths
+  groupwork-connect doctor  Check login, topic schema, agents, bindings, and paths
   groupwork-connect start   Start the connector
   groupwork-connect pause   Pause mention processing
   groupwork-connect resume  Resume mention processing

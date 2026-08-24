@@ -40,6 +40,15 @@ export async function doctor() {
       if (error) throw error;
       bindings = data ?? [];
       results.push(report(bindings.length > 0, `${bindings.length} agent binding(s) found`));
+
+      const { data: catalogVersion, error: catalogError } = await supabase
+        .rpc("get_topic_catalog_version");
+      results.push(report(
+        !catalogError && Number.isFinite(Number(catalogVersion)),
+        catalogError
+          ? `Topic catalog unavailable: ${catalogError.message}`
+          : `Topic catalog v${catalogVersion}`,
+      ));
     } catch (error) {
       results.push(report(false, `groupwork connection: ${error.message}`));
     }

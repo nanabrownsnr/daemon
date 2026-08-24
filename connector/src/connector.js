@@ -8,6 +8,11 @@ import { join } from "path";
 import { AGENT_TYPES } from "./agent-types.js";
 import { getAuthenticatedClient } from "./auth.js";
 import { CONFIG_DIR } from "./paths.js";
+import {
+  TOPIC_MODEL_ID,
+  TOPIC_MODEL_VERSION,
+  topicClassifier,
+} from "./topic-classifier.js";
 
 // ============================================================
 // Config — minimal, no per-binding values here
@@ -22,6 +27,7 @@ const LAST_SEEN_FILE = join(CONFIG_DIR, "last_seen.json");
 const CONTEXT_FILE = join(CONFIG_DIR, "context_cursors.json");
 const STATE_FILE = join(CONFIG_DIR, "state.json");
 const bindingQueues = new Map();
+let topicCatalogCache = null;
 
 export async function enqueueBindingWork(bindingId, task) {
   const previous = bindingQueues.get(bindingId) ?? Promise.resolve();
@@ -174,6 +180,77 @@ export function classifyQuestion(text) {
   else if (/\b(design|architecture|structure)\b/.test(lower)) topicTag = "architecture";
 
   return { questionType, topicTag };
+}
+
+async function loadTopicCatalog(supabase, classifier = topicClassifier) {
+  const { data: version, error: versionError } = await supabase.rpc("get_topic_catalog_version");
+  if (versionError || version == null) return null;
+  if (topicCatalogCache?.version === version) {
+    void classifier.prepareCatalog(topicCatalogCache.definitions, version);
+    return topicCatalogCache;
+  }
+
+  const { data: definitions, error: definitionsError } = await supabase.rpc("get_topic_definitions");
+  if (definitionsError || !definitions?.length) return null;
+  topicCatalogCache = { version, definitions };
+  void classifier.prepareCatalog(definitions, version);
+  return topicCatalogCache;
+}
+
+async function getTopicContext(supabase, message) {
+  const { data, error } = await supabase
+    .from("message")
+    .select("id, body")
+    .eq("chat_id", message.chat_id)
+    .lte("created_at", message.created_at)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  if (error || !data?.length) return message.body;
+  return data.reverse().map((item) => item.body).join("\n");
+}
+
+export async function classifyMessageTopic(supabase, message, binding, classifier = topicClassifier) {
+  const heuristic = classifyQuestion(message.body);
+  try {
+    const [catalog, context] = await Promise.all([
+      loadTopicCatalog(supabase, classifier),
+      getTopicContext(supabase, message),
+    ]);
+    if (!catalog) return { ...heuristic, source: "keyword_fallback", confidence: null };
+
+    const allowedTopics = new Set(catalog.definitions.map((definition) => definition.slug));
+    const fallback = {
+      ...heuristic,
+      topicTag: allowedTopics.has(heuristic.topicTag) ? heuristic.topicTag : "general",
+    };
+    const classification = await classifier.classifyNow(context, fallback, catalog.version);
+    const { data: recorded, error: recordError } = await supabase.rpc(
+      "record_message_topic_classification",
+      {
+        p_message_id: message.id,
+        p_agent_binding_id: binding.id,
+        p_topic_slug: classification.topicTag,
+        p_confidence: classification.confidence,
+        p_source: classification.source,
+        p_model_id: classification.source === "local_embedding" ? TOPIC_MODEL_ID : null,
+        p_model_version: classification.source === "local_embedding" ? TOPIC_MODEL_VERSION : null,
+        p_topic_catalog_version: catalog.version,
+      },
+    );
+    if (recordError) {
+      console.error(`[groupwork] Could not record topic classification: ${recordError.message}`);
+      return classification;
+    }
+    return {
+      ...classification,
+      topicTag: recorded?.topic_slug ?? classification.topicTag,
+      source: recorded?.source ?? classification.source,
+      confidence: recorded?.confidence ?? classification.confidence,
+    };
+  } catch (error) {
+    console.error(`[groupwork] Topic classification fallback: ${error.message}`);
+    return { ...heuristic, source: "keyword_fallback", confidence: null };
+  }
 }
 
 // ============================================================
@@ -350,12 +427,13 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     return false;
   }
 
-  // classification (cheap, synchronous regex) and prompt-building (async DB
-  // fetch) don't depend on each other's output — run concurrently rather
-  // than sequentially. classifyQuestion itself is instant either way, but
-  // buildPrompt does a real DB round-trip, so no reason to make it wait.
-  const classification = classifyQuestion(msg.body);
-  const chatSummary = await getChatSummary(supabase, msg.chat_id);
+  // Local semantic classification and platform summary loading are independent.
+  // If the model or versioned catalog is still warming, classification returns
+  // the deterministic fallback immediately instead of blocking agent work.
+  const [classification, chatSummary] = await Promise.all([
+    classifyMessageTopic(supabase, msg, binding),
+    getChatSummary(supabase, msg.chat_id),
+  ]);
   const bindingCursor = getContextCursor(binding.id);
   const summaryCursor = chatSummary?.through_created_at ?? null;
   const contextSince = [bindingCursor, summaryCursor].filter(Boolean).sort().at(-1) ?? null;
@@ -468,6 +546,12 @@ export async function start() {
   }
 
   console.log("[groupwork] Person:", person.display_name, "(", person.id, ")");
+
+  // Warm the optional local classifier in the background. Startup, presence,
+  // subscriptions, and mention delivery never wait for the model download.
+  void loadTopicCatalog(supabase).catch((error) => {
+    console.error(`[groupwork] Topic catalog unavailable; keyword fallback remains active: ${error.message}`);
+  });
 
   // fetch ALL bindings for this person across all chats
   const { data: bindings } = await supabase

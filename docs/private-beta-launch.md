@@ -33,6 +33,7 @@ Apply the current runbooks before deploying the matching app and connector:
 3. `docs/sql/edit-agent-message-atomic.sql`
 4. `docs/sql/send-message-atomic.sql`
 5. `docs/sql/chat-context-summary.sql`
+6. `docs/sql/topic-classification.sql`
 
 Re-running these current runbooks is intended to be safe, but use the existing
 private-beta project and review SQL errors rather than skipping a failed step.
@@ -40,12 +41,15 @@ private-beta project and review SQL errors rather than skipping a failed step.
 ## New-computer acceptance test
 
 1. Install and authenticate Claude Code or Codex CLI.
-2. Download connector 0.5.0 from `/connector` and install it from the download
+2. Download connector 0.6.0 from `/connector` and install it from the download
    directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
 3. Run `groupwork-connect login --app-url https://your-deployed-origin`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
-   `groupwork-connect start`.
+   `groupwork-connect start`. Doctor must report a topic catalog version before
+   the connector is considered UAT-ready.
 5. Confirm the binding becomes green and turns yellow while working.
+   The local topic model may continue downloading in the background; verify
+   startup and mention delivery are not blocked while fallback is active.
 6. In a Team chat, mention the owner, Accept the request, and verify execution
    and Advice/Act publication.
 7. In a Solo chat, target Claude and Codex separately and together; verify each
@@ -62,8 +66,17 @@ against the dedicated staging users because it mutates Supabase data.
 ```bash
 npm --prefix connector test
 npm --prefix app run lint
-cd app && npx tsc --noEmit
+npm --prefix app exec tsc -- --noEmit
 ```
 
 Once the staging accounts and connector are ready, run `npm run check:prod`
 from the repository root.
+
+## Known private-UAT exception
+
+`npm audit --omit=dev` currently reports four high-severity transitive
+advisories in the local-classifier dependency chain (`onnxruntime-node` /
+`adm-zip` and `sharp`) with no upstream fix. The connector only uses text
+embeddings and does not accept ZIP or image inputs, so this is accepted for the
+small, known-tester UAT only. Resolve or formally review it before public npm
+distribution.

@@ -12,8 +12,9 @@ process.env.GROUPWORK_EMAIL ??= "regression@example.com";
 process.env.GROUPWORK_PASSWORD ??= "regression-password";
 process.env.GROUPWORK_CONFIG_DIR = mkdtempSync(join(tmpdir(), "groupwork-regression-"));
 
-const { classifyQuestion, buildPrompt, routeResponse, pause, resume, resolveMentionBinding, enqueueBindingWork } = await import("../src/connector.js");
+const { classifyQuestion, classifyMessageTopic, buildPrompt, routeResponse, pause, resume, resolveMentionBinding, enqueueBindingWork } = await import("../src/connector.js");
 const { AGENT_TYPES } = await import("../src/agent-types.js");
+const { LocalTopicClassifier } = await import("../src/topic-classifier.js");
 
 function responseQuery(data) {
   return {
@@ -63,6 +64,125 @@ test("classifies supported MVP topics and question types", () => {
   assert.deepEqual(classifyQuestion("Hello teammate"), {
     questionType: "other",
     topicTag: "general",
+  });
+});
+
+test("local topic model warm-up is single-flight", async () => {
+  let loads = 0;
+  const classifier = new LocalTopicClassifier({
+    loadPipeline: async () => {
+      loads += 1;
+      return async () => ({ tolist: () => [[1, 0]] });
+    },
+  });
+  await Promise.all([classifier.warmup(), classifier.warmup(), classifier.warmup()]);
+  assert.equal(loads, 1);
+  assert.equal(classifier.getStatus().status, "ready");
+});
+
+test("classification falls back immediately while the model is loading", async () => {
+  let finishLoading;
+  const loading = new Promise((resolve) => { finishLoading = resolve; });
+  const classifier = new LocalTopicClassifier({ loadPipeline: () => loading });
+  void classifier.warmup();
+  const result = await classifier.classifyNow(
+    "Fix the endpoint",
+    { topicTag: "api", questionType: "technical" },
+    2,
+  );
+  assert.equal(result.source, "keyword_fallback");
+  assert.equal(result.topicTag, "api");
+  finishLoading(async () => ({ tolist: () => [[1, 0]] }));
+  await classifier.modelPromise;
+});
+
+test("local classifier only uses vectors from the requested catalog version", async () => {
+  const fakePipeline = async (input) => {
+    if (Array.isArray(input)) return { tolist: () => [[1, 0], [0, 1]] };
+    return { tolist: () => [[0.95, 0.05]] };
+  };
+  const classifier = new LocalTopicClassifier({ loadPipeline: async () => fakePipeline });
+  const definitions = [
+    { slug: "api", name: "API", description: "Endpoints", examples: [] },
+    { slug: "testing", name: "Testing", description: "Tests", examples: [] },
+  ];
+  await classifier.prepareCatalog(definitions, 7);
+  const semantic = await classifier.classifyNow(
+    "Change the endpoint",
+    { topicTag: "general", questionType: "technical" },
+    7,
+  );
+  assert.equal(semantic.topicTag, "api");
+  assert.equal(semantic.source, "local_embedding");
+
+  const stale = await classifier.classifyNow(
+    "Change the endpoint",
+    { topicTag: "general", questionType: "technical" },
+    8,
+  );
+  assert.equal(stale.source, "keyword_fallback");
+});
+
+test("platform catalog drives local classification and stores immutable evidence", async () => {
+  const rpcCalls = [];
+  const supabase = {
+    async rpc(name, args) {
+      rpcCalls.push({ name, args });
+      if (name === "get_topic_catalog_version") return { data: 42, error: null };
+      if (name === "get_topic_definitions") {
+        return { data: [
+          { slug: "general", name: "General", description: "General", examples: [], active: true },
+          { slug: "database", name: "Database", description: "Postgres and SQL", examples: [], active: true },
+        ], error: null };
+      }
+      if (name === "record_message_topic_classification") {
+        return { data: {
+          topic_slug: args.p_topic_slug,
+          source: args.p_source,
+          confidence: args.p_confidence,
+        }, error: null };
+      }
+      throw new Error(`Unexpected RPC ${name}`);
+    },
+    from() {
+      return {
+        select() { return this; },
+        eq() { return this; },
+        lte() { return this; },
+        order() { return this; },
+        limit() { return Promise.resolve({ data: [{ id: "message-1", body: "Update the Postgres policy" }], error: null }); },
+      };
+    },
+  };
+  const classifier = {
+    prepareCatalog() { return Promise.resolve(true); },
+    classifyNow(text, fallback, version) {
+      assert.match(text, /Postgres/);
+      assert.equal(version, 42);
+      return Promise.resolve({ ...fallback, topicTag: "database", source: "local_embedding", confidence: 0.88 });
+    },
+  };
+
+  const result = await classifyMessageTopic(supabase, {
+    id: "message-1",
+    chat_id: "chat-1",
+    created_at: "2026-08-24T00:00:00Z",
+    body: "Update the Postgres policy",
+  }, { id: "binding-1" }, classifier);
+
+  assert.equal(result.topicTag, "database");
+  assert.deepEqual(rpcCalls.at(-1), {
+    name: "record_message_topic_classification",
+    args: {
+      p_message_id: "message-1",
+      p_agent_binding_id: "binding-1",
+      p_topic_slug: "database",
+      p_confidence: 0.88,
+      p_source: "local_embedding",
+      p_model_id: "Xenova/all-MiniLM-L6-v2",
+      p_model_version: "local-minilm-v1@751bff37182d",
+      p_topic_catalog_version: 42,
+    },
   });
 });
 

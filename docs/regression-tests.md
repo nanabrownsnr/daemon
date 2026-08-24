@@ -16,7 +16,8 @@ cd connector
 npm test
 ```
 
-These cover topic/question classification, prompt context, per-binding
+These cover deterministic and local semantic topic/question classification,
+single-flight model warm-up, non-blocking fallback, versioned catalog evidence, prompt context, per-binding
 serialization, Advice and Act routing, Judgment RPC decisions and safe
 fallback, forced-Advice catch-up, pause/resume persistence, prevention of
 self-reinforcing trust events, and Claude/Codex invocation contracts.

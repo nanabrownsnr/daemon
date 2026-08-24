@@ -22,6 +22,10 @@ groupwork-connect login --app-url https://your-groupwork-site.example
 groupwork-connect doctor
 ```
 
+`doctor` also verifies that the platform topic catalog required by connector
+0.6.0 is installed. If it reports `Topic catalog unavailable`, the groupwork
+operator must apply `docs/sql/topic-classification.sql` before UAT.
+
 If npm reports `EACCES` for `/usr/local`, the machine's global npm directory is
 root-owned. On Linux, use `sudo npm install -g ./groupwork-connector.tgz` (and
 `sudo npm uninstall -g @daemon/connect` when upgrading from the old private-beta
@@ -33,6 +37,16 @@ a user-owned Node installation such as nvm avoids this requirement.
 ```bash
 groupwork-connect start
 ```
+
+On startup, the connector prepares a local semantic topic model in the
+background. Transformers.js and its cross-platform runtimes add approximately
+407 MB to a clean Linux npm installation; the first model download adds about
+23 MB under `~/.groupwork/models`. Actual installed size varies by npm and OS.
+Agent delivery never waits for this download: messages
+use the deterministic topic fallback until the pinned model and current
+platform topic-catalog version are ready. Chat text remains on the connector
+computer during classification; only the selected topic and audit metadata are
+written back to groupwork.
 
 The project directory and agent type come from the binding configured in the
 groupwork chat. Solo agents receive their normal terminal-equivalent local
