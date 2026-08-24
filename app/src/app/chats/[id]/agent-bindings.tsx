@@ -170,28 +170,21 @@ export default function AgentBindings({ chatId, personId }: Props) {
               {isMe && <span className="text-neutral-600 ml-1 text-xs">you</span>}
             </span>
 
-            {/* mode — three-way pill: Advice | Act | Judgment.
-                Advice/Act are manual pins (human overrides learned trust).
-                Judgment hands the per-mention decision to the platform,
-                evaluated per-topic via decide_topic_mode(). */}
+            {/* Advice/Act are manual pins; Judgment delegates the per-topic
+                decision to the platform's learned trust rule. */}
             {isMe && (
-              <div
+              <select
+                value={b.mode}
+                onChange={(event) => handleSetMode(b, event.target.value)}
+                disabled={loading === b.id}
+                aria-label={`Response mode for ${b.agent_label ?? AGENT_TYPE_LABELS[b.agent_type] ?? b.agent_type}`}
                 title="Advice/Act are manual overrides. Judgment lets the platform decide per-topic, based on how much trust that topic has earned."
-                className="flex shrink-0 rounded-full p-0.5 text-xs bg-neutral-700"
+                className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none transition-colors hover:border-neutral-600 focus:border-neutral-500 disabled:opacity-50"
               >
                 {MODES.map((m) => (
-                  <button
-                    key={m.key}
-                    onClick={() => handleSetMode(b, m.key)}
-                    disabled={loading === b.id}
-                    className={`px-2 py-0.5 rounded-full transition-all font-medium whitespace-nowrap ${
-                      b.mode === m.key ? "bg-white text-neutral-900 shadow-sm" : "text-neutral-400 hover:text-neutral-200"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
+                  <option key={m.key} value={m.key}>{m.label}</option>
                 ))}
-              </div>
+              </select>
             )}
 
 

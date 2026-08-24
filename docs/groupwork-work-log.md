@@ -84,6 +84,14 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - [ ] Install connector 0.6.0 on a second physical computer; verify non-blocking first model download, then run login, doctor, start, pause, resume, and logout.
 - [ ] Run the fast connector suite, launch-critical Playwright flow, TypeScript, lint, and production build.
 - [ ] Verify two-user RLS boundaries and rotate any credential exposed during development.
+- [ ] Keep the connector alive with zero bindings and activate bindings added later from the web UI without requiring a terminal restart.
+
+UAT finding to fix after the current test pass: `groupwork-connect start`
+currently exits when the authenticated person has no bindings. It should remain
+running in an idle state, subscribe for binding changes, and automatically
+activate agents added later in the web UI. This lets a new user start and
+minimize the connector terminal once, then complete setup entirely in the web
+app without returning to restart it.
 
 Known private-UAT exception: `@huggingface/transformers` currently brings four
 high-severity transitive npm advisories through `onnxruntime-node`/`adm-zip` and
@@ -274,3 +282,4 @@ and autonomous agent loops remain post-MVP.
 - ✅ `009` — `project_path` column on `agent_binding`.
 - ✅ RLS policies for private drafts, judgment events, agent bindings, explicit agent mentions, run requests and summaries have been exercised in live UAT. The repository still needs a consolidated baseline migration before a fresh project can be reproduced from source alone.
 - ✅ Realtime has been exercised for messages, edits, bindings, private drafts, explicit agent mentions, run requests and summaries. Publication membership should be rechecked during the clean database rehearsal.
+- ✅ Deployed-domain signup and email confirmation redirect were exercised successfully on `groupwork-ai.vercel.app`; the confirmed user returned to the app with a valid session.
