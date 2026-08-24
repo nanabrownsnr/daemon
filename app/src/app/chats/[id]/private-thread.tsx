@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import MessageMarkdown from "./message-markdown";
 
 type Draft = {
   id: string;
+  person_id?: string;
   body: string;
   created_at: string;
   first_viewed_at: string | null;
@@ -13,6 +15,8 @@ type Draft = {
   question_type: string | null;
   trigger_message_id: string | null;
   agent_binding_id: string | null;
+  response_status?: "streaming" | "completed" | "failed";
+  stream_sequence?: number;
 };
 
 type AgentBinding = {
@@ -74,7 +78,7 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
     if (agentBindings.length === 0) return;
     supabase
       .from("private_thread_message")
-      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id, agent_binding_id")
+      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id, agent_binding_id, response_status, stream_sequence")
       .eq("chat_id", chatId)
       .eq("person_id", personId)
       .eq("sender_type", "agent")
@@ -148,6 +152,16 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
         if (msg.agent_binding_id && !agentBindings.some((binding) => binding.id === msg.agent_binding_id)) return;
         setDrafts((prev) => [...prev, msg]);
       })
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "private_thread_message",
+        filter: `chat_id=eq.${chatId}`,
+      }, (payload) => {
+        const msg = payload.new as Draft;
+        if (msg.person_id && msg.person_id !== personId) return;
+        setDrafts((prev) => prev.map((draft) => draft.id === msg.id ? msg : draft));
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [chatId, personId, bindingKey, agentBindings, supabase]);
@@ -159,7 +173,9 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
 
   useEffect(() => {
     visibleDrafts.forEach((draft) => {
-      if (!draft.first_viewed_at && !viewedAtRef.current[draft.id]) void markViewed(draft.id);
+      if ((draft.response_status ?? "completed") === "completed"
+          && !draft.first_viewed_at
+          && !viewedAtRef.current[draft.id]) void markViewed(draft.id);
     });
   }, [visibleDrafts, markViewed]);
 
@@ -318,6 +334,16 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
     setLoading(null);
   }
 
+  async function handleDismissFailed(draft: Draft) {
+    setLoading(draft.id);
+    await supabase
+      .from("private_thread_message")
+      .update({ resolved_at: new Date().toISOString() })
+      .eq("id", draft.id);
+    removeDraft(draft.id);
+    setLoading(null);
+  }
+
   if (agentBindings.length === 0 || !activeBindingId) return null;
 
   return (
@@ -366,7 +392,9 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
                   )}
                 </div>
                 <p className="text-xs text-neutral-500">From {request.message?.sender?.display_name ?? "a teammate"}</p>
-                <p className="text-sm text-neutral-200">{request.message?.body ?? "Requested agent work"}</p>
+                <div className="text-sm text-neutral-200">
+                  <MessageMarkdown compact>{request.message?.body ?? "Requested agent work"}</MessageMarkdown>
+                </div>
                 {(request.status === "pending" || request.status === "failed") && (
                   <div className="space-y-2">
                     <p className="text-xs text-amber-300/80">
@@ -418,12 +446,33 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
                 rows={3}
                 autoFocus
               />
+            ) : draft.response_status === "streaming" ? (
+              <div className="text-sm text-neutral-200">
+                <p className="whitespace-pre-wrap leading-relaxed">
+                  {draft.body || "Agent is working…"}
+                  <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60" />
+                </p>
+              </div>
             ) : (
-              <p className="text-sm text-neutral-200">{draft.body}</p>
+              <div className="text-sm text-neutral-200">
+                <MessageMarkdown compact>{draft.body || "No response was produced."}</MessageMarkdown>
+              </div>
+            )}
+
+            {draft.response_status === "failed" && (
+              <p className="text-xs text-red-400">The agent stopped before completing this response.</p>
             )}
 
             <div className="flex gap-2 flex-wrap">
-              {editingId === draft.id ? (
+              {draft.response_status === "streaming" ? null : draft.response_status === "failed" ? (
+                <button
+                  onClick={() => handleDismissFailed(draft)}
+                  disabled={loading === draft.id}
+                  className="text-xs px-2 py-1 rounded bg-neutral-800 text-neutral-300 disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+              ) : editingId === draft.id ? (
                 <>
                   <button
                     onClick={() => handleSendEdited(draft)}

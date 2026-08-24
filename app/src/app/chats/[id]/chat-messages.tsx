@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import MessageMarkdown from "./message-markdown";
 
 type Message = {
   id: string;
@@ -12,6 +13,8 @@ type Message = {
   was_edited?: boolean;
   agent_binding_id: string | null;
   topic_tag: string | null;
+  response_status?: "streaming" | "completed" | "failed";
+  stream_sequence?: number;
 };
 
 type Person = {
@@ -111,7 +114,7 @@ export default function ChatMessages({
   useEffect(() => {
     supabase
       .from("message")
-      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag")
+      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag, response_status, stream_sequence")
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
       .then(({ data }) => setMessages(data ?? []));
@@ -307,16 +310,27 @@ export default function ChatMessages({
                         </button>
                       </div>
                     </div>
-                  ) : m.body}
+                  ) : m.response_status === "streaming" ? (
+                    <p className="whitespace-pre-wrap leading-relaxed">
+                      {m.body || "Agent is working…"}
+                      <span className="ml-1 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current opacity-60" />
+                    </p>
+                  ) : (
+                    <MessageMarkdown>{m.body || "No response was produced."}</MessageMarkdown>
+                  )}
                 </div>
                 {m.sender_type === "agent" && (
                   <div className="flex items-center gap-1 px-1 text-neutral-600">
                     <span className="text-xs italic">
-                      {m.was_edited
+                      {m.response_status === "streaming"
+                        ? "Streaming response"
+                        : m.response_status === "failed"
+                          ? "Agent response failed"
+                          : m.was_edited
                         ? `Edited by ${personNames[m.sender_person_id] ?? "Unknown"}`
                         : `Sent by ${agentNames[m.agent_binding_id ?? ""] ?? `${personNames[m.sender_person_id] ?? "Unknown"}'s agent`}`}
                     </span>
-                    {authoredByMe && editingMessageId !== m.id && (
+                    {authoredByMe && editingMessageId !== m.id && (m.response_status ?? "completed") === "completed" && (
                       <button
                         type="button"
                         onClick={() => beginEdit(m)}

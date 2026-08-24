@@ -28,6 +28,7 @@ const CONTEXT_FILE = join(CONFIG_DIR, "context_cursors.json");
 const STATE_FILE = join(CONFIG_DIR, "state.json");
 const bindingQueues = new Map();
 let topicCatalogCache = null;
+let topicCatalogWarning = null;
 
 export async function enqueueBindingWork(bindingId, task) {
   const previous = bindingQueues.get(bindingId) ?? Promise.resolve();
@@ -148,6 +149,7 @@ async function invokeAgent(binding) {
       workspaceWrite: binding._workspaceWrite === true,
       networkAccess: binding._networkAccess === true,
       fullAccess: binding._fullAccess === true,
+      onText: binding._onText,
     },
   );
 
@@ -184,14 +186,29 @@ export function classifyQuestion(text) {
 
 async function loadTopicCatalog(supabase, classifier = topicClassifier) {
   const { data: version, error: versionError } = await supabase.rpc("get_topic_catalog_version");
-  if (versionError || version == null) return null;
+  if (versionError || version == null) {
+    const warning = versionError?.message ?? "topic catalog version was null";
+    if (topicCatalogWarning !== warning) {
+      console.error(`[groupwork] Topic catalog unavailable; classifications will not be recorded: ${warning}`);
+      topicCatalogWarning = warning;
+    }
+    return null;
+  }
   if (topicCatalogCache?.version === version) {
     void classifier.prepareCatalog(topicCatalogCache.definitions, version);
     return topicCatalogCache;
   }
 
   const { data: definitions, error: definitionsError } = await supabase.rpc("get_topic_definitions");
-  if (definitionsError || !definitions?.length) return null;
+  if (definitionsError || !definitions?.length) {
+    const warning = definitionsError?.message ?? "topic catalog contained no active definitions";
+    if (topicCatalogWarning !== warning) {
+      console.error(`[groupwork] Topic definitions unavailable; classifications will not be recorded: ${warning}`);
+      topicCatalogWarning = warning;
+    }
+    return null;
+  }
+  topicCatalogWarning = null;
   topicCatalogCache = { version, definitions };
   void classifier.prepareCatalog(definitions, version);
   return topicCatalogCache;
@@ -216,7 +233,11 @@ export async function classifyMessageTopic(supabase, message, binding, classifie
       loadTopicCatalog(supabase, classifier),
       getTopicContext(supabase, message),
     ]);
-    if (!catalog) return { ...heuristic, source: "keyword_fallback", confidence: null };
+    if (!catalog) {
+      const fallback = { ...heuristic, source: "keyword_fallback", confidence: null };
+      console.log(`[groupwork] Topic fallback (not recorded): ${fallback.topicTag}`);
+      return fallback;
+    }
 
     const allowedTopics = new Set(catalog.definitions.map((definition) => definition.slug));
     const fallback = {
@@ -241,12 +262,24 @@ export async function classifyMessageTopic(supabase, message, binding, classifie
       console.error(`[groupwork] Could not record topic classification: ${recordError.message}`);
       return classification;
     }
-    return {
+    const result = {
       ...classification,
       topicTag: recorded?.topic_slug ?? classification.topicTag,
       source: recorded?.source ?? classification.source,
       confidence: recorded?.confidence ?? classification.confidence,
     };
+    const confidence = result.confidence == null ? "n/a" : result.confidence.toFixed(3);
+    console.log(`[groupwork] Topic classified: ${result.topicTag} (${result.source}, confidence: ${confidence}, catalog: v${catalog.version})`);
+    if (result.candidateScores?.length) {
+      const candidates = result.candidateScores
+        .map((candidate) => `${candidate.topicTag}=${candidate.score.toFixed(3)}`)
+        .join(", ");
+      const thresholdNote = result.topicTag === "general" && result.matchedTopicTag
+        ? `; highest was ${result.matchedTopicTag}, below the 0.340 threshold`
+        : "";
+      console.log(`[groupwork] Topic candidates: ${candidates}${thresholdNote}`);
+    }
+    return result;
   } catch (error) {
     console.error(`[groupwork] Topic classification fallback: ${error.message}`);
     return { ...heuristic, source: "keyword_fallback", confidence: null };
@@ -320,7 +353,7 @@ Instructions:
 // Response routing
 // ============================================================
 
-export async function routeResponse(supabase, personId, binding, chatId, responseBody, triggerClassification = null, triggerMessageId = null, forceAdvice = false) {
+export async function resolveResponseMode(supabase, personId, binding, triggerClassification = null, forceAdvice = false) {
   // Three-way mode logic:
   // - forceAdvice (catch-up mentions) always wins — never auto-post a stale batch
   // - 'advice' / 'act' are manual pins — human overrides, ignore learned trust
@@ -345,6 +378,113 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
   } else {
     mode = binding.mode ?? "advice";
   }
+
+  return mode;
+}
+
+async function beginResponseStream(supabase, personId, binding, chatId, mode, triggerClassification, triggerMessageId) {
+  if (mode === "act") {
+    const { data, error } = await supabase
+      .from("message")
+      .insert({
+        chat_id: chatId,
+        sender_person_id: personId,
+        sender_type: "agent",
+        agent_binding_id: binding.id,
+        mode: "act",
+        body: "",
+        topic_tag: triggerClassification?.topicTag ?? "general",
+        response_status: "streaming",
+        stream_sequence: 0,
+      })
+      .select("id")
+      .single();
+    if (error) {
+      console.warn(`[groupwork] Chat streaming unavailable; using final delivery: ${error.message}`);
+      return null;
+    }
+    return { id: data.id, destination: "chat", mode };
+  }
+
+  const { data, error } = await supabase
+    .from("private_thread_message")
+    .insert({
+      chat_id: chatId,
+      person_id: personId,
+      agent_binding_id: binding.id,
+      sender_type: "agent",
+      body: "",
+      topic_tag: triggerClassification?.topicTag ?? null,
+      question_type: triggerClassification?.questionType ?? null,
+      trigger_message_id: triggerMessageId ?? null,
+      response_status: "streaming",
+      stream_sequence: 0,
+    })
+    .select("id")
+    .single();
+  if (error) {
+    console.warn(`[groupwork] Private streaming unavailable; using final delivery: ${error.message}`);
+    return null;
+  }
+  return { id: data.id, destination: "private", mode };
+}
+
+function createResponseStreamWriter(supabase, stream) {
+  let latestBody = "";
+  let sequence = 0;
+  let timer = null;
+  let queue = Promise.resolve(true);
+
+  const write = (status) => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    sequence += 1;
+    const body = latestBody;
+    const currentSequence = sequence;
+    queue = queue.then(async () => {
+      const { data, error } = await supabase.rpc("update_agent_response_stream", {
+        p_destination: stream.destination,
+        p_response_id: stream.id,
+        p_body: body,
+        p_sequence: currentSequence,
+        p_status: status,
+      });
+      if (error || data !== true) {
+        console.error(`[groupwork] Failed to update ${stream.destination} response stream: ${error?.message ?? "stream row was not updated"}`);
+        return false;
+      }
+      return true;
+    });
+    return queue;
+  };
+
+  return {
+    push(body) {
+      if (!body || body === latestBody) return;
+      latestBody = body;
+      if (!timer) timer = setTimeout(() => { void write("streaming"); }, 300);
+    },
+    async complete(body) {
+      latestBody = body;
+      return write("completed");
+    },
+    async fail(body = latestBody) {
+      latestBody = body;
+      return write("failed");
+    },
+  };
+}
+
+export async function routeResponse(supabase, personId, binding, chatId, responseBody, triggerClassification = null, triggerMessageId = null, forceAdvice = false, resolvedMode = null) {
+  const mode = resolvedMode ?? await resolveResponseMode(
+    supabase,
+    personId,
+    binding,
+    triggerClassification,
+    forceAdvice,
+  );
 
   if (mode === "act") {
     const { error } = await supabase.from("message").insert({
@@ -451,19 +591,61 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
   binding._networkAccess = isSolo || options.networkAccess === true;
   binding._fullAccess = isSolo || options.fullAccess === true;
 
+  const agentDefinition = AGENT_TYPES[binding.agent_type];
+  const responseMode = await resolveResponseMode(
+    supabase,
+    person.id,
+    binding,
+    classification,
+    forceAdvice,
+  );
+  const responseStream = agentDefinition?.supportsTextStreaming
+    ? await beginResponseStream(
+        supabase,
+        person.id,
+        binding,
+        msg.chat_id,
+        responseMode,
+        classification,
+        msg.id,
+      )
+    : null;
+  const streamWriter = responseStream
+    ? createResponseStreamWriter(supabase, responseStream)
+    : null;
+  binding._onText = streamWriter ? (body) => streamWriter.push(body) : undefined;
+
   binding._beginWork?.();
   try {
     const response = await invokeAgent(binding);
     if (!response) {
       console.error("[groupwork] No response from agent.");
+      if (streamWriter) await streamWriter.fail();
       binding._finishWork?.(false);
       return false;
     }
 
-    const routed = await routeResponse(supabase, person.id, binding, msg.chat_id, response, classification, msg.id, forceAdvice);
+    const routed = streamWriter
+      ? await streamWriter.complete(response)
+      : await routeResponse(
+          supabase,
+          person.id,
+          binding,
+          msg.chat_id,
+          response,
+          classification,
+          msg.id,
+          forceAdvice,
+          responseMode,
+        );
     if (!routed) {
       binding._finishWork?.(false);
       return false;
+    }
+    if (streamWriter) {
+      console.log(responseMode === "act"
+        ? "[groupwork] Streamed Act response completed in chat."
+        : "[groupwork] Streamed Advice response completed in Agent Workspace.");
     }
     if (isSolo) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
     storeContextCursor(binding.id, msg.created_at);
@@ -471,8 +653,11 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     return true;
   } catch (error) {
     console.error(`[groupwork] Agent processing failed: ${error.message}`);
+    if (streamWriter) await streamWriter.fail();
     binding._finishWork?.(false);
     return false;
+  } finally {
+    binding._onText = undefined;
   }
 }
 

@@ -1,5 +1,5 @@
 -- Owner approval gate for Team-chat agent execution.
--- Run once in the Supabase SQL editor before installing connector 0.6.0.
+-- Run once in the Supabase SQL editor before installing connector 0.7.0.
 
 create table if not exists public.agent_run_request (
   id uuid primary key default gen_random_uuid(),

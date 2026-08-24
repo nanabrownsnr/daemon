@@ -128,19 +128,31 @@ export class LocalTopicClassifier {
     const task = this.queue.catch(() => {}).then(async () => {
       const output = await this.pipeline(text, { pooling: "mean", normalize: true });
       const [messageVector] = output.tolist();
-      let best = null;
-      for (const candidate of this.topicVectors) {
-        const score = cosineSimilarity(messageVector, candidate.vector);
-        if (!best || score > best.score) best = { ...candidate, score };
-      }
+      const candidates = this.topicVectors
+        .map((candidate) => ({ ...candidate, score: cosineSimilarity(messageVector, candidate.vector) }))
+        .sort((left, right) => right.score - left.score);
+      const best = candidates[0] ?? null;
+      const candidateScores = candidates.slice(0, 3).map((candidate) => ({
+        topicTag: candidate.definition.slug,
+        score: candidate.score,
+      }));
       if (!best || best.score < 0.34) {
-        return { ...fallback, topicTag: "general", source: "local_embedding", confidence: best?.score ?? 0 };
+        return {
+          ...fallback,
+          topicTag: "general",
+          source: "local_embedding",
+          confidence: best?.score ?? 0,
+          matchedTopicTag: best?.definition.slug ?? null,
+          candidateScores,
+        };
       }
       return {
         ...fallback,
         topicTag: best.definition.slug,
         source: "local_embedding",
         confidence: best.score,
+        matchedTopicTag: best.definition.slug,
+        candidateScores,
       };
     }).catch((error) => {
       this.lastError = error;

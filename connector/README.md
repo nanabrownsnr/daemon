@@ -23,7 +23,7 @@ groupwork-connect doctor
 ```
 
 `doctor` also verifies that the platform topic catalog required by connector
-0.6.0 is installed. If it reports `Topic catalog unavailable`, the groupwork
+0.7.0 is installed. If it reports `Topic catalog unavailable`, the groupwork
 operator must apply `docs/sql/topic-classification.sql` before UAT.
 
 If npm reports `EACCES` for `/usr/local`, the machine's global npm directory is
@@ -68,6 +68,9 @@ local terminal permissions for that request.
    raw-message delta; Supabase generates summaries independently of connectors
 6. Publishes live presence state: green when online, pulsing yellow while
    working, and temporarily red after an invocation failure
+7. Streams partial responses into chat in Act mode or Agent Workspace in Advice
+   mode when the selected runtime exposes text deltas. Claude Code supports this
+   today; adapters without a delta protocol still publish one final response.
 
 ## Modes
 

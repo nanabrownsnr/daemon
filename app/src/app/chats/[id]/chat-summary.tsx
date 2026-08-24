@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import MessageMarkdown from "./message-markdown";
 
 type ChatSummary = {
   summary: string;
@@ -45,7 +46,9 @@ export default function ChatSummary({ chatId }: { chatId: string }) {
 
   return (
     <div className="space-y-2">
-      <p className="whitespace-pre-wrap text-xs leading-5 text-neutral-400">{context.summary}</p>
+      <div className="text-xs leading-5 text-neutral-400">
+        <MessageMarkdown compact>{context.summary}</MessageMarkdown>
+      </div>
       <p className="text-[11px] text-neutral-700">Shared summary · version {context.summary_version}</p>
     </div>
   );

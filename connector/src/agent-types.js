@@ -3,13 +3,16 @@ import { spawn } from "child_process";
 export const AGENT_TYPES = {
   claude_code: {
     label: "Claude Code",
+    supportsTextStreaming: true,
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const allowedTools = options.workspaceWrite
         ? "Read,Grep,Glob,LS,Edit,Write,Bash"
         : "Read,Grep,Glob,LS";
       const baseArgs = [
         "--print", prompt,
-        "--output-format", "json",
+        "--output-format", "stream-json",
+        "--verbose",
+        "--include-partial-messages",
         "--allowedTools", allowedTools,
         ...(options.fullAccess
           ? ["--dangerously-skip-permissions"]
@@ -27,6 +30,12 @@ export const AGENT_TYPES = {
         let stdout = "";
         let stderr = "";
         let settled = false;
+        let lineBuffer = "";
+        let streamedResponse = null;
+        let finalResponse = null;
+        let discoveredSessionId = fallbackSessionId;
+        let parseError = null;
+        let partialResponse = "";
 
         const finish = (result) => {
           if (settled) return;
@@ -34,9 +43,56 @@ export const AGENT_TYPES = {
           resolve(result);
         };
 
+        const textFromContent = (content) => {
+          if (typeof content === "string") return content.trim() || null;
+          if (!Array.isArray(content)) return null;
+          const text = content
+            .filter((block) => block?.type === "text" && typeof block.text === "string")
+            .map((block) => block.text)
+            .join("\n")
+            .trim();
+          return text || null;
+        };
+
+        const consumeEvent = (line) => {
+          if (!line.trim()) return;
+          try {
+            const event = JSON.parse(line);
+            discoveredSessionId = event.session_id ?? discoveredSessionId;
+
+            // Legacy JSON output remains accepted for adapter compatibility.
+            if (!event.type && typeof event.result === "string" && event.result.trim()) {
+              finalResponse = event.result.trim();
+            }
+            if (event.type === "assistant") {
+              const assistantText = textFromContent(event.message?.content ?? event.content);
+              if (assistantText) {
+                streamedResponse = assistantText;
+                if (!partialResponse) options.onText?.(assistantText);
+              }
+            }
+            if (event.type === "stream_event"
+                && event.event?.type === "content_block_delta"
+                && event.event.delta?.type === "text_delta"
+                && typeof event.event.delta.text === "string") {
+              partialResponse += event.event.delta.text;
+              if (partialResponse.trim()) options.onText?.(partialResponse);
+            }
+            if (event.type === "result" && typeof event.result === "string" && event.result.trim()) {
+              finalResponse = event.result.trim();
+            }
+          } catch (error) {
+            parseError = error;
+          }
+        };
+
         child.stdout.on("data", (data) => {
           const chunk = data.toString();
           stdout += chunk;
+          lineBuffer += chunk;
+          const lines = lineBuffer.split(/\r?\n/);
+          lineBuffer = lines.pop() ?? "";
+          for (const line of lines) consumeEvent(line);
           console.log(`[groupwork] [stdout chunk received: ${chunk.length} bytes]`);
         });
 
@@ -77,32 +133,23 @@ export const AGENT_TYPES = {
             return;
           }
 
-          try {
-            const trimmedStdout = stdout.trim();
-            const result = JSON.parse(trimmedStdout);
-            
-            console.log("[groupwork] Successfully parsed JSON output from Claude.");
-            
-            const agentResponse = result.result && result.result.trim().length > 0 
-              ? result.result 
-              : null;
+          consumeEvent(lineBuffer);
+          const agentResponse = finalResponse ?? streamedResponse;
 
-            if (!agentResponse) {
-              console.warn("[groupwork] Parsed JSON successfully, but 'result.result' field was empty or missing.");
+          if (agentResponse) {
+            if (!finalResponse && streamedResponse) {
+              console.warn("[groupwork] Claude result event was empty; recovered the final assistant message from stream-json.");
+            } else {
+              console.log("[groupwork] Successfully parsed Claude response.");
             }
-
-            finish({
-              response: agentResponse,
-              sessionId: result.session_id ?? fallbackSessionId,
-              failed: !agentResponse,
-            });
-          } catch (parseErr) {
-            console.error("[groupwork] FAILURE: Failed to parse Claude JSON output.");
-            console.error("[groupwork] Parse error details:", parseErr.message);
-            console.error("[groupwork] Raw stdout payload that failed parsing:\n-----\n", stdout, "\n-----");
-            
-            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            finish({ response: agentResponse, sessionId: discoveredSessionId, failed: false });
+            return;
           }
+
+          console.error("[groupwork] Claude completed successfully but produced no textual assistant response.");
+          if (parseError) console.error("[groupwork] Last Claude JSONL parse error:", parseError.message);
+          console.error(`[groupwork] Claude event payload preview: ${stdout.trim().slice(0, 1200)}`);
+          finish({ response: null, sessionId: discoveredSessionId, failed: true });
         });
 
         child.stdin.end();
@@ -127,6 +174,10 @@ export const AGENT_TYPES = {
   },
   codex_cli: {
     label: "Codex CLI",
+    // Current `codex exec --json` exposes structured lifecycle and completed
+    // agent-message events, not textual deltas. It keeps final delivery until
+    // the CLI exposes a stable delta event.
+    supportsTextStreaming: false,
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const runCodex = (args, fallbackSessionId) => new Promise((resolve) => {
         const child = spawnProcess("codex", args, {

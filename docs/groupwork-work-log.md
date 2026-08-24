@@ -51,10 +51,11 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
 | Per-binding catch-up cursor | Startup catch-up fetches only mentions not successfully processed by that exact binding. One agent cannot advance another agent's cursor. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
-| Connector regression tests | Twenty-two fast Node tests cover deterministic and local semantic classification, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, per-binding execution serialization, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex continuity. Keep these running during MVP development. |
+| Connector regression tests | Twenty-four fast Node tests cover deterministic and local semantic classification, highest-score ordering, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, per-binding execution serialization, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, Claude streaming, and Claude/Codex continuity. Keep these running during MVP development. |
 | Per-binding execution queue | ✅ Invocations for one binding are serialized so a second mention cannot concurrently resume the same Claude/Codex session. Different bindings remain concurrent. |
 | Atomic message + mention delivery | ✅ `send_message_with_mentions` validates chat membership and Team/Solo targets, then stores the human message and all structured mentions in one transaction. SQL: `docs/sql/send-message-atomic.sql`. |
-| Versioned local semantic topic classification | ✅ Connector 0.6.0 prepares a pinned quantized MiniLM embedding model in the background, pulls platform-owned topic definitions by catalog version, compares mention context locally, and records immutable per-message/per-binding classifications. Download, load, refresh, offline, queue saturation, and inference failures immediately use the deterministic fallback; they never block agent work. A clean Linux install measured about 407 MB plus a 23 MB model cache. SQL: `docs/sql/topic-classification.sql`. |
+| Versioned local semantic topic classification | ✅ Connector 0.7.0 prepares a pinned quantized MiniLM embedding model in the background, pulls platform-owned topic definitions by catalog version, compares mention context locally, and records immutable per-message/per-binding classifications. It selects the highest cosine-similarity candidate and logs the top three scores; a highest score below 0.340 conservatively records `general`. Download, load, refresh, offline, queue saturation, and inference failures immediately use the deterministic fallback; they never block agent work. A clean Linux install measured about 407 MB plus a 23 MB model cache. SQL: `docs/sql/topic-classification.sql`. |
+| Capability-based response streaming | ✅ Connector 0.7.0 creates one provisional response and streams ordered text updates to shared chat in Act or Agent Workspace in Advice. Claude Code supplies native text deltas; adapters without a stable delta protocol use final delivery. Future adapters opt in through the same capability/callback contract. Failed streams are visibly marked rather than disappearing. SQL: `docs/sql/agent-response-streaming.sql`. |
 | Agent working/error presence | ✅ Binding dot is green online, pulses yellow while an invocation is running, and shows red for 15 seconds after an invocation failure. |
 | Incremental connector prompts | ✅ Each binding stores its own successful context cursor and receives only new chat messages on later turns, while first invocation retains a bounded 15-message context window. The target message is not duplicated in context. |
 | Platform-owned running chat summary | ✅ A Supabase Database Webhook wakes the `summarize-chat` Edge Function after message inserts. PostgreSQL atomically claims each 20-message block; an independent OpenRouter model produces shared goal/decision/state/task/handoff context. Connectors only read the stored summary plus their raw delta. Failures never block chat or agent work. SQL: `docs/sql/chat-context-summary.sql`; setup: `docs/platform-chat-summaries.md`. |
@@ -64,7 +65,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is persisted per binding and resumed exactly. Solo and accepted Team work use native-style full local access. Completed JSONL turns return immediately even when a detached server keeps inherited streams open. |
 | Codex sandbox compatibility | ✅ Read-only adapter calls retain the Codex sandbox. Authorized Solo and accepted Team work deliberately use the runtime's native full-access automation mode, matching the execution consent shown in the UI. |
 | Connector browser authorization | ✅ `groupwork-connect login` opens the signed-in web app for explicit loopback authorization. The connector stores refreshable session tokens with `0600` permissions and never receives or stores the user's password. Logout removes the local session. |
-| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. The canonical `groupwork-connect` CLI and website `/connector` download/setup instructions are ready. Connector 0.6.0 adds local semantic topic classification. Public npm publication remains optional and gated on a deployed app URL plus second physical-machine UAT. |
+| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. The canonical `groupwork-connect` CLI and website `/connector` download/setup instructions are ready. Connector 0.7.0 adds capability-based Claude response streaming, topic-candidate diagnostics, and resilient Claude stream parsing. Public npm publication remains optional and gated on a deployed app URL plus second physical-machine UAT. |
 | Connector doctor | ✅ Checks saved login, Supabase identity, required topic-catalog schema/version, bindings, Claude/Codex installation, local project paths, and website reachability before start. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
@@ -76,12 +77,12 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 ## Private-beta launch gate
 
 - **Current state (2026-08-24): ready to enter MVP UAT after the operator applies
-  the six SQL runbooks and deploys the matching app/connector 0.6.0.** Feature
+  the seven SQL runbooks and deploys the matching app/connector 0.7.0.** Feature
   scope is frozen; failures found in UAT take priority over new features.
 - [ ] Keep signup limited to known private testers. Before opening signup externally, configure custom SMTP, enable email confirmation, point the Confirm signup template at `/auth/confirm`, and verify a new account lands in connector onboarding.
 - [ ] Apply the current SQL runbooks and rehearse Team Accept, Solo multi-agent targeting, atomic sends, correction/demotion, and connector catch-up.
 - [ ] Deploy the web app and verify browser authorization uses its HTTPS origin.
-- [ ] Install connector 0.6.0 on a second physical computer; verify non-blocking first model download, then run login, doctor, start, pause, resume, and logout.
+- [ ] Install connector 0.7.0 on a second physical computer; verify non-blocking first model download, Claude streaming, then run login, doctor, start, pause, resume, and logout.
 - [ ] Run the fast connector suite, launch-critical Playwright flow, TypeScript, lint, and production build.
 - [ ] Verify two-user RLS boundaries and rotate any credential exposed during development.
 - [ ] Keep the connector alive with zero bindings and activate bindings added later from the web UI without requiring a terminal restart.
@@ -182,7 +183,7 @@ and autonomous agent loops remain post-MVP.
 
 ## Session Notes — Post-restore fixes
 
-- **Regression testing scope for MVP:** keep the twenty-two fast connector tests and
+- **Regression testing scope for MVP:** keep the twenty-four fast connector tests and
   run them after connector/judgment changes. The Playwright + live Supabase
   suite has been scaffolded and partially exercised, but stabilization is
   deliberately deferred until the UI and workflows stop changing rapidly.
@@ -212,6 +213,11 @@ and autonomous agent loops remain post-MVP.
   configured project directory, falling back to a new session only when needed;
   subsequent calls resume the captured thread ID. Live new/resume commands and
   JSONL parsing were verified.
+- ✅ **Claude empty-result recovery:** connector 0.7.0 consumes Claude's
+  documented `stream-json` events. If the successful final result event has an
+  empty `result` field after tool work, it recovers the final textual assistant
+  message instead of discarding the run as “No response.” A regression fixture
+  covers this exact output shape.
 - **Next UAT:** repeat the core two-person workflow with one Codex binding and
   one Claude Code binding, have them collaborate on a useful GitHub-backed task,
   and inspect how accurately context and responsibility pass through groupwork.
@@ -251,7 +257,7 @@ and autonomous agent loops remain post-MVP.
   that same session while groupwork invokes it; define locking or a clear UI
   warning if either CLI cannot safely serialize access.
 - **Agent-to-agent loop prevention** — needed once any auto-triggering beyond explicit mention exists
-- **Topic continuity and catalog quality** — connector 0.6.0 now uses a local
+- **Topic continuity and catalog quality** — connector 0.7.0 now uses a local
   MiniLM embedding model with a deterministic non-blocking fallback. UAT should
   measure follow-up-message classification, false topic switches, confidence,
   cold-start behavior, and whether the initial platform catalog needs narrower

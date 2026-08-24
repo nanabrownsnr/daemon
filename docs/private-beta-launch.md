@@ -34,6 +34,7 @@ Apply the current runbooks before deploying the matching app and connector:
 4. `docs/sql/send-message-atomic.sql`
 5. `docs/sql/chat-context-summary.sql`
 6. `docs/sql/topic-classification.sql`
+7. `docs/sql/agent-response-streaming.sql`
 
 Re-running these current runbooks is intended to be safe, but use the existing
 private-beta project and review SQL errors rather than skipping a failed step.
@@ -41,7 +42,7 @@ private-beta project and review SQL errors rather than skipping a failed step.
 ## New-computer acceptance test
 
 1. Install and authenticate Claude Code or Codex CLI.
-2. Download connector 0.6.0 from `/connector` and install it from the download
+2. Download connector 0.7.0 from `/connector` and install it from the download
    directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
 3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
@@ -54,6 +55,8 @@ private-beta project and review SQL errors rather than skipping a failed step.
    and Advice/Act publication.
 7. In a Solo chat, target Claude and Codex separately and together; verify each
    retains its own project, session, response, and presence state.
+   Verify Claude renders incrementally in Act and Advice; verify Codex still
+   publishes its complete response without creating a duplicate message.
 8. Stop and restart the connector, then verify catch-up is routed through
    Advice and processed only once.
 9. Run pause, resume, and logout once.

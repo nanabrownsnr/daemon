@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import CreateChatForm from "./create-chat-form";
 import LogoutButton from "./logout-button";
 import ChatCardAction from "./chat-card-action";
+import SiteHeader from "../site-header";
 
 type Chat = {
   id: string;
@@ -56,22 +57,21 @@ export default async function ChatsPage() {
   });
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100 px-5 py-8 sm:px-8 sm:py-12">
-      <div className="max-w-2xl mx-auto space-y-10">
-        <header className="flex items-start justify-between gap-6">
-          <div>
-          <Link href="/chats" className="inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300">
-            groupwork
+    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+      <SiteHeader homeHref="/chats">
+          <Link href="/about" className="inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300">
+          about
           </Link>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Your conversations</h1>
-            <p className="mt-1 text-sm text-neutral-500">Signed in as {person.display_name}</p>
-          </div>
-          <div className="flex items-center gap-3 pt-1">
           <Link href="/connector" className="inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300">
           connector-setup
           </Link>
             <LogoutButton />
-          </div>
+      </SiteHeader>
+
+      <div className="max-w-2xl mx-auto space-y-10 px-5 pb-12 sm:px-8">
+        <header>
+          <h1 className="text-3xl font-semibold tracking-tight">Your conversations</h1>
+          <p className="mt-1 text-sm text-neutral-500">Signed in as {person.display_name}</p>
         </header>
 
         <section className="space-y-3">

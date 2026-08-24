@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import SiteHeader from "../site-header";
 
 export default function AuthPage() {
   const [mode, setMode] = useState<"signup" | "login">("login");
@@ -74,9 +76,12 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-950 text-neutral-100">
-      <div className="w-full max-w-sm space-y-6 p-8">
-        <h1 className="text-2xl font-semibold">groupwork</h1>
+    <div className="min-h-screen bg-neutral-950 text-neutral-100">
+      <SiteHeader>
+        <Link href="/about" className="transition-colors hover:text-neutral-300">about</Link>
+      </SiteHeader>
+      <div className="mx-auto w-full max-w-sm space-y-6 px-8 pb-12 pt-8 sm:pt-12">
+        <h1 className="text-2xl font-semibold">Welcome</h1>
 
         <div className="flex gap-4 text-sm">
           <button
