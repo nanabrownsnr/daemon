@@ -45,7 +45,7 @@ private-beta project and review SQL errors rather than skipping a failed step.
    Install the CLI inside the same Linux, WSL, Git Bash, or macOS environment
    where `groupwork-connect` will run; installing a desktop/web app is not
    sufficient.
-2. Download connector 0.7.1 from `/connector` and install it from the download
+2. Download connector 0.7.2 from `/connector` and install it from the download
    directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
 3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
@@ -106,11 +106,12 @@ npm --prefix app exec tsc -- --noEmit
 Once the staging accounts and connector are ready, run `npm run check:prod`
 from the repository root.
 
-## Known private-UAT exception
+## Formally accepted private-beta exception
 
 `npm audit --omit=dev` currently reports four high-severity transitive
 advisories in the local-classifier dependency chain (`onnxruntime-node` /
 `adm-zip` and `sharp`) with no upstream fix. The connector only uses text
-embeddings and does not accept ZIP or image inputs, so this is accepted for the
-small, known-tester UAT only. Resolve or formally review it before public npm
-distribution.
+embeddings and does not accept ZIP or image inputs, limiting the identified
+attack paths. This risk is formally accepted for the small, known-tester
+private beta only. Resolve, replace, or re-review it before public npm
+distribution; it is not approved for public production.

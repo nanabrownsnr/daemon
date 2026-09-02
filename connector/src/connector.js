@@ -619,14 +619,17 @@ export async function start() {
   });
 
   // fetch ALL bindings for this person across all chats
-  const { data: bindings } = await supabase
+  const { data: bindings, error: bindingsError } = await supabase
     .from("agent_binding")
     .select("id, chat_id, agent_type, agent_label, project_path, mode")
     .eq("person_id", person.id);
 
-  if (!bindings || bindings.length === 0) {
-    console.log("[groupwork] No agent bindings found. Register an agent in the web UI first.");
-    process.exit(0);
+  if (bindingsError) {
+    console.error(`[groupwork] Could not load agent bindings; starting idle and listening for changes: ${bindingsError.message}`);
+  }
+  const initialBindings = bindings ?? [];
+  if (initialBindings.length === 0) {
+    console.log("[groupwork] No agent bindings found. Staying connected; register an agent in the web UI to activate it.");
   }
 
   // Team mentions resolve by chat; Solo mentions resolve by exact binding ID.
@@ -727,7 +730,7 @@ export async function start() {
     bindingsByChat[binding.chat_id] = (bindingsByChat[binding.chat_id] ?? [])
       .filter((existing) => existing.id !== binding.id);
   };
-  for (const b of bindings) {
+  for (const b of initialBindings) {
     addOrUpdateBinding(b);
     observeChat(b.chat_id);
     startPresence(b);
@@ -805,7 +808,7 @@ export async function start() {
   // Re-tracking periodically keeps our own state fresh and doesn't change
   // that server-side timeout, but avoids us looking stale sooner than we
   // have to.
-  console.log(`[groupwork] Connected. Listening for mentions of ${person.display_name} across ${bindings.length} chat(s).`);
+  console.log(`[groupwork] Connected. Listening for mentions of ${person.display_name} across ${initialBindings.length} chat(s).`);
   if (isPaused()) console.log("[groupwork] ⚠️  Currently PAUSED — run groupwork-connect resume to process mentions.");
   console.log("[groupwork] Press Ctrl+C to stop.");
 

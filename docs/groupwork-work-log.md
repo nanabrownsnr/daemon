@@ -51,23 +51,24 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
 | Per-binding catch-up cursor | Startup catch-up fetches only mentions not successfully processed by that exact binding. One agent cannot advance another agent's cursor. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
-| Connector regression tests | Twenty-three fast Node tests cover deterministic and local semantic classification, highest-score ordering, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, per-binding execution serialization, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex continuity. Keep these running during MVP development. |
+| Connector regression tests | Twenty-four fast Node tests cover deterministic and local semantic classification, highest-score ordering, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, per-binding execution serialization, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex continuity. Keep these running during MVP development. |
 | Per-binding execution queue | ✅ Invocations for one binding are serialized so a second mention cannot concurrently resume the same Claude/Codex session. Different bindings remain concurrent. |
 | Atomic message + mention delivery | ✅ `send_message_with_mentions` validates chat membership and Team/Solo targets, then stores the human message and all structured mentions in one transaction. SQL: `docs/sql/send-message-atomic.sql`. |
 | Chat GitHub project context | ✅ Chat owners can attach a validated GitHub repository URL. The link is visible in the chat header and included in every connector prompt with an explicit reminder that local credentials still control pull/push access. SQL: `docs/sql/chat-github-link.sql`. |
 | Cross-platform CLI launch diagnostics | ✅ Windows `.cmd` executable resolution is used for Claude Code and Codex CLI, and `doctor` checks the platform-specific executable. Missing CLI errors now identify the exact CLI to install instead of only reporting `ENOENT`. |
-| Versioned local semantic topic classification | ✅ Connector 0.7.1 prepares a pinned quantized MiniLM embedding model in the background, pulls platform-owned topic definitions by catalog version, compares mention context locally, and records immutable per-message/per-binding classifications. It selects the highest cosine-similarity candidate and logs the top three scores; a highest score below 0.340 conservatively records `general`. Download, load, refresh, offline, queue saturation, and inference failures immediately use the deterministic fallback; they never block agent work. A clean Linux install measured about 407 MB plus a 23 MB model cache. SQL: `docs/sql/topic-classification.sql`. |
+| Versioned local semantic topic classification | ✅ Connector 0.7.2 prepares a pinned quantized MiniLM embedding model in the background, pulls platform-owned topic definitions by catalog version, compares mention context locally, and records immutable per-message/per-binding classifications. It selects the highest cosine-similarity candidate and logs the top three scores; a highest score below 0.340 conservatively records `general`. Download, load, refresh, offline, queue saturation, and inference failures immediately use the deterministic fallback; they never block agent work. A clean Linux install measured about 407 MB plus a 23 MB model cache. SQL: `docs/sql/topic-classification.sql`. |
 | Agent presence + working indicator | ✅ Binding dots have one job: green when the connector is online and grey when offline. While an agent is executing, a three-dot typing bubble appears in the conversation; one complete response appears when the run finishes. |
 | Incremental connector prompts | ✅ Each binding stores its own successful context cursor and receives only new chat messages on later turns, while first invocation retains a bounded 15-message context window. The target message is not duplicated in context. |
-| Platform-owned running chat summary | ✅ A Supabase Database Webhook wakes the `summarize-chat` Edge Function after message inserts. PostgreSQL atomically claims each 20-message block; an independent OpenRouter model produces shared goal/decision/state/task/handoff context. Connectors only read the stored summary plus their raw delta. Failures never block chat or agent work. SQL: `docs/sql/chat-context-summary.sql`; setup: `docs/platform-chat-summaries.md`. |
+| Platform-owned running chat summary | ✅ A Supabase Database Webhook wakes the `summarize-chat` Edge Function after message inserts. The first summary waits for two distinct speakers; subsequent messages refresh it incrementally. PostgreSQL atomically claims each block, and an independent OpenRouter model produces shared goal/decision/state/task/handoff context. Connectors only read the stored summary plus their raw delta. Failures never block chat or agent work. SQL: `docs/sql/chat-context-summary.sql`; setup: `docs/platform-chat-summaries.md`. |
 | Owner execution gate | ✅ Team mentions create pending Agent Workspace requests and do not reach the connector until the agent owner chooses **Accept** or **Reject**. Accept explicitly grants the local runtime terminal-equivalent host permissions for that request; requests are atomically claimed once. Execution and publication remain separate controls. SQL: `docs/sql/team-run-approval.sql`. |
 | Solo execution permissions | ✅ Explicit Solo mentions authorize native-style full local execution for Claude/Codex: files, commands, validation, host processes and ports across invocations, and network access. This deliberately bypasses the Codex sandbox and Claude permission prompts on the connector computer; the binding UI requires an explicit acknowledgement. |
 | Solo multi-agent workspace | ✅ Live Claude/Codex UAT complete: persistent labeled bindings, agent-only `@` targeting, independent sessions/project paths/modes/presence, binding-specific prompts, and per-agent Agent Workspace tabs. Autonomous agent-to-agent triggering is deliberately excluded. |
 | Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is persisted per binding and resumed exactly. Solo and accepted Team work use native-style full local access. Completed JSONL turns return immediately even when a detached server keeps inherited streams open. |
 | Codex sandbox compatibility | ✅ Read-only adapter calls retain the Codex sandbox. Authorized Solo and accepted Team work deliberately use the runtime's native full-access automation mode, matching the execution consent shown in the UI. |
 | Connector browser authorization | ✅ `groupwork-connect login` opens the signed-in web app for explicit loopback authorization. The connector stores refreshable session tokens with `0600` permissions and never receives or stores the user's password. Logout removes the local session. |
-| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. The canonical `groupwork-connect` CLI and website `/connector` download/setup instructions are ready. Connector 0.7.1 adds conversation-level working indicators, topic-candidate diagnostics, and resilient Claude response parsing. Public npm publication remains optional and gated on a deployed app URL plus second physical-machine UAT. |
+| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. The canonical `groupwork-connect` CLI and website `/connector` download/setup instructions are ready. Connector 0.7.2 adds idle zero-binding startup to the 0.7.1 feature set. Public npm publication remains optional and gated on a deployed app URL plus second physical-machine UAT. |
 | Connector doctor | ✅ Checks saved login, Supabase identity, required topic-catalog schema/version, bindings, Claude/Codex installation, local project paths, and website reachability before start. |
+| Zero-binding idle startup | ✅ The connector remains connected with no bindings, listens for live binding inserts, and activates agents added later from the web UI without a terminal restart. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
 | Atomic correction RPC | `edit_agent_message` validates ownership, updates the agent message, and records the first `corrected_after_send` event in one PostgreSQL transaction. SQL runbook: `docs/sql/edit-agent-message-atomic.sql`. |
 | Auth/session hardening | Next.js 16 `proxy.ts` refreshes Supabase sessions and protects `/chats`; authenticated users are redirected away from `/auth`. Signup normalizes input and handles both immediate sessions and future email-confirmation mode. |
@@ -78,23 +79,21 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 ## Private-beta launch gate
 
 - **Current state (2026-09-02): ready to enter MVP UAT after the operator applies
-  the seven SQL runbooks and deploys the matching app/connector 0.7.1.** Feature
+  the seven SQL runbooks and deploys the matching app/connector 0.7.2.** Feature
   scope is frozen; failures found in UAT take priority over new features.
 - [ ] Keep signup limited to known private testers. Before opening signup externally, configure custom SMTP, enable email confirmation, point the Confirm signup template at `/auth/confirm`, and verify a new account lands in connector onboarding.
 - [ ] Apply the current SQL runbooks and rehearse Team Accept, Solo multi-agent targeting, atomic sends, correction/demotion, and connector catch-up.
 - [ ] Deploy the web app and verify browser authorization uses its HTTPS origin.
-- [ ] Install connector 0.7.1 on a second physical computer; verify non-blocking first model download and conversation working indicators, then run login, doctor, start, pause, resume, and logout.
+- [ ] Install connector 0.7.2 on a second physical computer; verify non-blocking first model download and conversation working indicators, then run login, doctor, start, pause, resume, and logout.
 - [ ] Run the fast connector suite, launch-critical Playwright flow, TypeScript, lint, and production build.
 - [ ] Verify two-user RLS boundaries and rotate any credential exposed during development.
-- [ ] Keep the connector alive with zero bindings and activate bindings added later from the web UI without requiring a terminal restart.
+- [x] Keep the connector alive with zero bindings and activate bindings added later from the web UI without requiring a terminal restart.
 - [ ] Add device-scoped binding ownership or an atomic invocation claim before allowing one account to run connectors on multiple computers simultaneously.
 
-UAT finding to fix after the current test pass: `groupwork-connect start`
-currently exits when the authenticated person has no bindings. It should remain
-running in an idle state, subscribe for binding changes, and automatically
-activate agents added later in the web UI. This lets a new user start and
-minimize the connector terminal once, then complete setup entirely in the web
-app without returning to restart it.
+Resolved UAT finding: `groupwork-connect start` now remains running in an idle
+state when the authenticated person has no bindings. The existing binding
+subscription activates agents added later in the web UI, so a new user can
+start and minimize the connector terminal once without returning to restart it.
 
 Current topology boundary: one active connector computer per groupwork account.
 Every connector presently subscribes to every binding owned by that person, so
@@ -102,12 +101,13 @@ two simultaneous connectors for one account can both consume the same Solo
 mention. The two-laptop founder test must use two accounts in a Team chat until
 bindings are assigned to devices or invocation delivery is atomically claimed.
 
-Known private-UAT exception: `@huggingface/transformers` currently brings four
-high-severity transitive npm advisories through `onnxruntime-node`/`adm-zip` and
-`sharp`, with no upstream fix available in the installed line. The connector's
-text-only classifier does not accept user ZIP/image inputs, which limits the
-identified attack paths, but this dependency must be upgraded, replaced, or
-formally reviewed before public distribution. It is not accepted as a silent
+Formally accepted private-beta exception (2026-09-02):
+`@huggingface/transformers` currently brings four high-severity transitive npm
+advisories through `onnxruntime-node`/`adm-zip` and `sharp`, with no upstream fix
+available in the installed line. The connector's text-only classifier does not
+accept user ZIP/image inputs, limiting the identified attack paths. This is
+accepted only for the known-tester private beta; it must be upgraded, replaced,
+or re-reviewed before public npm distribution and is not an accepted public
 production risk.
 
 Feature scope is frozen for this gate. Pairwise trust, learned inbound approval,

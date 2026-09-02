@@ -57,7 +57,9 @@ using (
 -- Remove the connector-era writer if an earlier version of this runbook ran.
 drop function if exists public.store_chat_context_summary(uuid, text, timestamptz);
 
--- Atomically claim exactly one block. Database webhooks can arrive together;
+-- Atomically claim one incremental block. The first summary waits until at
+-- least two distinct speakers have contributed; after that, every new message
+-- can refresh the running context. Database webhooks can arrive together;
 -- only one Edge Function is allowed to summarize a chat at a time.
 create or replace function public.claim_chat_summary_batch(
   p_chat_id uuid,
@@ -72,6 +74,7 @@ declare
   v_existing public.chat_context_summary%rowtype;
   v_messages jsonb;
   v_count int;
+  v_distinct_senders int;
 begin
   if p_batch_size < 5 or p_batch_size > 100 then
     raise exception 'Invalid summary batch size' using errcode = '22023';
@@ -90,12 +93,11 @@ begin
     return null;
   end if;
 
-  select count(*), jsonb_agg(to_jsonb(batch) order by batch.created_at)
-  into v_count, v_messages
-  from (
+  with pending as (
     select
       message.id,
       message.body,
+      message.sender_person_id,
       message.sender_type::text as sender_type,
       message.created_at,
       person.display_name as sender_name,
@@ -105,11 +107,22 @@ begin
     left join public.agent_binding binding on binding.id = message.agent_binding_id
     where message.chat_id = p_chat_id
       and (v_existing.through_created_at is null or message.created_at > v_existing.through_created_at)
-    order by message.created_at asc
-    limit p_batch_size
-  ) batch;
+  ), batch as (
+    select * from pending order by created_at asc limit p_batch_size
+  )
+  select
+    (select count(*) from pending),
+    (select count(distinct sender_person_id) from pending),
+    (select jsonb_agg(to_jsonb(batch) - 'sender_person_id' order by batch.created_at) from batch)
+  into v_count, v_distinct_senders, v_messages;
 
-  if coalesce(v_count, 0) < p_batch_size then
+  if coalesce(v_count, 0) = 0 then
+    return null;
+  end if;
+
+  -- Do not publish a one-person monologue as shared context. Once a summary
+  -- exists, a single new message is enough to produce the next version.
+  if v_existing.through_created_at is null and coalesce(v_distinct_senders, 0) < 2 then
     return null;
   end if;
 

@@ -55,9 +55,10 @@ In Supabase Dashboard, open **Database → Webhooks** and create:
   `SUMMARY_WEBHOOK_SECRET` value
 
 The function acknowledges immediately and runs the OpenRouter request as a
-background task. PostgreSQL atomically claims a batch only when the chat has
-20 unsummarized messages, so concurrent webhook deliveries cannot create
-duplicate summaries.
+background task. The first summary is claimed once at least two distinct
+people or agents have spoken. After that, each new unsummarized message can
+produce an incremental summary update. PostgreSQL claims only one batch at a
+time, so concurrent webhook deliveries cannot create duplicate summaries.
 
 OpenRouter free-provider failures are retried three times, respecting the
 provider's `Retry-After` delay (capped at 15 seconds). Zero Data Retention
@@ -66,7 +67,7 @@ through a provider that retains prompts.
 
 ## 5. Verify
 
-After a chat crosses 20 messages, check:
+After at least two distinct speakers have exchanged messages, check:
 
 ```sql
 select chat_id, summary_version, status, model_used,
