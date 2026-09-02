@@ -320,6 +320,9 @@ export async function buildPrompt(supabase, triggerMessage, chatId, personDispla
   const summaryBlock = options.chatSummary
     ? `Shared Running Summary (covers older chat history):\n${options.chatSummary}\n\n`
     : "";
+  const projectBlock = options.githubUrl
+    ? `Project repository (shared chat context): ${options.githubUrl}\nUse this repository as the project reference when relevant. Access still depends on the local credentials and permissions available to the runtime; do not claim to have pushed or pulled unless you actually did so.\n\n`
+    : "";
 
   const roleDirective = options.isSolo
     ? `You are ${options.agentLabel ?? "a coding agent"} in ${personDisplayName}'s private Solo workspace. ${personDisplayName} coordinates the work and has explicitly addressed this message to you. Work from your own project directory and respond as this named agent.`
@@ -333,7 +336,7 @@ export async function buildPrompt(supabase, triggerMessage, chatId, personDispla
 
   return `Role: ${roleDirective}
 
-${summaryBlock}New groupwork Context:
+${summaryBlock}${projectBlock}New groupwork Context:
 ${contextLines}
 
 Current Request:
@@ -445,7 +448,7 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
   // fetch the triggering message
   const { data: msg } = await supabase
     .from("message")
-    .select("id, body, sender_person_id, chat_id, created_at, sender:sender_person_id(display_name)")
+    .select("id, body, sender_person_id, chat_id, created_at, sender:sender_person_id(display_name), chat:chat_id(github_url)")
     .eq("id", mention.message_id)
     .single();
 
@@ -488,6 +491,7 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     workspaceWrite: isSolo || options.workspaceWrite === true,
     fullAccess: isSolo || options.fullAccess === true,
     chatSummary: chatSummary?.summary ?? null,
+    githubUrl: (Array.isArray(msg.chat) ? msg.chat[0]?.github_url : msg.chat?.github_url) ?? null,
   });
   binding._prompt = prompt;
   binding._isSolo = isSolo;

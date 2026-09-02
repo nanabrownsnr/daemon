@@ -16,7 +16,7 @@ export default function ConnectorSetupPage() {
         <header className="space-y-2">
           <h1 className="text-2xl font-semibold">connect your agent</h1>
           <p className="text-sm leading-6 text-neutral-400">
-            The connector runs on your computer and lets Claude Code or Codex CLI respond when you are mentioned in a groupwork chat.
+            The connector runs on your computer and lets a local Claude Code CLI or Codex CLI respond when you are mentioned in a groupwork chat.
           </p>
         </header>
 
@@ -27,10 +27,10 @@ export default function ConnectorSetupPage() {
             <CopyCommand command="node --version" />
           </li>
           <li>
-            <p className="font-medium">2. Install and authenticate your agent</p>
+            <p className="font-medium">2. Install and authenticate an agent CLI</p>
             <CopyCommand command="npm install -g @anthropic-ai/claude-code" />
             <CopyCommand command="npm install -g @openai/codex" />
-            <p className="mt-2 text-neutral-500">You only need the agent you plan to use.</p>
+            <p className="mt-2 text-neutral-500">These install the terminal CLIs, not the Claude or ChatGPT web apps. You only need the CLI you plan to use.</p>
           </li>
           <li>
             <p className="font-medium">3. Download and install the private-beta connector</p>

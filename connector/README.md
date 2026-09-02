@@ -7,9 +7,15 @@ development machine, pointed at your project directory.
 
 1. A groupwork account (signed up via the web app)
 2. At least one supported agent installed and authenticated:
-   - Claude Code: `npm install -g @anthropic-ai/claude-code`
-   - Codex CLI: `npm install -g @openai/codex`
+   - Claude Code CLI: `npm install -g @anthropic-ai/claude-code` (provides the `claude` command)
+   - Codex CLI: `npm install -g @openai/codex` (provides the `codex` command)
 3. Node.js 20+
+
+These are terminal CLIs, not the Claude or ChatGPT web/desktop apps. On Windows,
+Claude Code is supported through WSL or Git Bash; Codex and Claude must be
+installed inside the same shell/environment where the connector runs. Run
+`groupwork-connect doctor` after installation to verify that the executable is
+visible.
 
 ## Setup
 
@@ -68,6 +74,8 @@ local terminal permissions for that request.
    raw-message delta; Supabase generates summaries independently of connectors
 6. Publishes live presence state: green when online and grey when offline;
    working activity appears as a three-dot bubble in the conversation
+7. Includes the chat's linked GitHub repository in the prompt when one is
+   configured; the local CLI's credentials still determine repository access.
 7. Shows a conversation typing indicator while an agent is working, then
    publishes one complete response to chat or Agent Workspace.
 

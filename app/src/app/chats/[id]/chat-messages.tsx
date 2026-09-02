@@ -221,6 +221,9 @@ export default function ChatMessages({
       setSendError(error?.message ?? "Could not send this message.");
       return;
     }
+    setMessages((previous) => previous.some((message) => message.id === msg.id)
+      ? previous
+      : [...previous, msg as Message]);
 
   }
 

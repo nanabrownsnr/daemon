@@ -1,5 +1,9 @@
 import { spawn } from "child_process";
 
+function executable(command) {
+  return process.platform === "win32" ? `${command}.cmd` : command;
+}
+
 export const AGENT_TYPES = {
   claude_code: {
     label: "Claude Code",
@@ -19,7 +23,7 @@ export const AGENT_TYPES = {
 
       const runClaude = (args, fallbackSessionId) => new Promise((resolve) => {
         console.log(`[groupwork] Spawning Claude with args:`, args);
-        const child = spawnProcess("claude", args, {
+        const child = spawnProcess(executable("claude"), args, {
           cwd: projectDir,
           env: process.env,
           stdio: ["pipe", "pipe", "pipe"],
@@ -90,7 +94,7 @@ export const AGENT_TYPES = {
         });
 
         child.on("error", (err) => {
-          console.error("[groupwork] Failed to start Claude process natively:", err);
+          console.error(`[groupwork] Failed to start Claude Code CLI (${executable("claude")}). Install/authenticate Claude Code CLI, then run groupwork-connect doctor: ${err.message}`);
           finish({ response: null, sessionId: fallbackSessionId, failed: true });
         });
 
@@ -163,7 +167,7 @@ export const AGENT_TYPES = {
     label: "Codex CLI",
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const runCodex = (args, fallbackSessionId) => new Promise((resolve) => {
-        const child = spawnProcess("codex", args, {
+        const child = spawnProcess(executable("codex"), args, {
           cwd: projectDir,
           env: process.env,
           stdio: ["pipe", "pipe", "pipe"],
@@ -228,7 +232,7 @@ export const AGENT_TYPES = {
         });
 
         child.on("error", (error) => {
-          console.error("[groupwork] Failed to start Codex CLI:", error.message);
+          console.error(`[groupwork] Failed to start Codex CLI (${executable("codex")}). Install/authenticate Codex CLI, then run groupwork-connect doctor: ${error.message}`);
           finish({ response: null, sessionId: fallbackSessionId, failed: true });
         });
 

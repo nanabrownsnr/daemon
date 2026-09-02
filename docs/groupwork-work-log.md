@@ -54,6 +54,8 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector regression tests | Twenty-three fast Node tests cover deterministic and local semantic classification, highest-score ordering, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, per-binding execution serialization, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex continuity. Keep these running during MVP development. |
 | Per-binding execution queue | ✅ Invocations for one binding are serialized so a second mention cannot concurrently resume the same Claude/Codex session. Different bindings remain concurrent. |
 | Atomic message + mention delivery | ✅ `send_message_with_mentions` validates chat membership and Team/Solo targets, then stores the human message and all structured mentions in one transaction. SQL: `docs/sql/send-message-atomic.sql`. |
+| Chat GitHub project context | ✅ Chat owners can attach a validated GitHub repository URL. The link is visible in the chat header and included in every connector prompt with an explicit reminder that local credentials still control pull/push access. SQL: `docs/sql/chat-github-link.sql`. |
+| Cross-platform CLI launch diagnostics | ✅ Windows `.cmd` executable resolution is used for Claude Code and Codex CLI, and `doctor` checks the platform-specific executable. Missing CLI errors now identify the exact CLI to install instead of only reporting `ENOENT`. |
 | Versioned local semantic topic classification | ✅ Connector 0.7.1 prepares a pinned quantized MiniLM embedding model in the background, pulls platform-owned topic definitions by catalog version, compares mention context locally, and records immutable per-message/per-binding classifications. It selects the highest cosine-similarity candidate and logs the top three scores; a highest score below 0.340 conservatively records `general`. Download, load, refresh, offline, queue saturation, and inference failures immediately use the deterministic fallback; they never block agent work. A clean Linux install measured about 407 MB plus a 23 MB model cache. SQL: `docs/sql/topic-classification.sql`. |
 | Agent presence + working indicator | ✅ Binding dots have one job: green when the connector is online and grey when offline. While an agent is executing, a three-dot typing bubble appears in the conversation; one complete response appears when the run finishes. |
 | Incremental connector prompts | ✅ Each binding stores its own successful context cursor and receives only new chat messages on later turns, while first invocation retains a bounded 15-message context window. The target message is not duplicated in context. |
@@ -75,8 +77,8 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 
 ## Private-beta launch gate
 
-- **Current state (2026-08-24): ready to enter MVP UAT after the operator applies
-  the six SQL runbooks and deploys the matching app/connector 0.7.1.** Feature
+- **Current state (2026-09-02): ready to enter MVP UAT after the operator applies
+  the seven SQL runbooks and deploys the matching app/connector 0.7.1.** Feature
   scope is frozen; failures found in UAT take priority over new features.
 - [ ] Keep signup limited to known private testers. Before opening signup externally, configure custom SMTP, enable email confirmation, point the Confirm signup template at `/auth/confirm`, and verify a new account lands in connector onboarding.
 - [ ] Apply the current SQL runbooks and rehearse Team Accept, Solo multi-agent targeting, atomic sends, correction/demotion, and connector catch-up.

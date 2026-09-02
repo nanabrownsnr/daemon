@@ -12,6 +12,7 @@ import MembersList from "./members-list";
 import CollapsibleSidebarSection from "./collapsible-sidebar-section";
 import ChatSummary from "./chat-summary";
 import { AgentPresenceProvider } from "./agent-presence";
+import GithubProjectLink from "./github-project-link";
 
 export default async function ChatPage({
   params,
@@ -40,7 +41,7 @@ export default async function ChatPage({
   }
 
   const { data: chat } = await supabase
-    .from("chat").select("id, name, created_by, is_group").eq("id", chatId).single();
+    .from("chat").select("id, name, created_by, is_group, github_url").eq("id", chatId).single();
   if (!chat) notFound();
 
   const { data: members } = await supabase
@@ -70,6 +71,7 @@ export default async function ChatPage({
         <div className="flex items-center gap-3">
           <Link href="/chats" className="text-neutral-500 hover:text-neutral-300 text-sm">←</Link>
           <span className="font-medium">{chat.name}</span>
+          <GithubProjectLink chatId={chatId} initialUrl={chat.github_url ?? null} isOwner={chat.created_by === myPerson.id} />
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 text-sm text-neutral-400">

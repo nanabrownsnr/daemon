@@ -3,7 +3,8 @@ import { existsSync } from "fs";
 import { getAuthenticatedClient, getConnectorAppUrl, hasSavedLogin } from "./auth.js";
 
 function commandVersion(command) {
-  const result = spawnSync(command, ["--version"], { encoding: "utf8" });
+  const executable = process.platform === "win32" ? `${command}.cmd` : command;
+  const result = spawnSync(executable, ["--version"], { encoding: "utf8" });
   if (result.error || result.status !== 0) return null;
   return (result.stdout || result.stderr).trim().split("\n")[0];
 }

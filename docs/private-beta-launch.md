@@ -34,6 +34,7 @@ Apply the current runbooks before deploying the matching app and connector:
 4. `docs/sql/send-message-atomic.sql`
 5. `docs/sql/chat-context-summary.sql`
 6. `docs/sql/topic-classification.sql`
+7. `docs/sql/chat-github-link.sql`
 
 Re-running these current runbooks is intended to be safe, but use the existing
 private-beta project and review SQL errors rather than skipping a failed step.
@@ -41,6 +42,9 @@ private-beta project and review SQL errors rather than skipping a failed step.
 ## New-computer acceptance test
 
 1. Install and authenticate Claude Code or Codex CLI.
+   Install the CLI inside the same Linux, WSL, Git Bash, or macOS environment
+   where `groupwork-connect` will run; installing a desktop/web app is not
+   sufficient.
 2. Download connector 0.7.1 from `/connector` and install it from the download
    directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
 3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.

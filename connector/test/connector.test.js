@@ -248,6 +248,19 @@ test("prompt layers a shared summary under the recent raw delta", async () => {
   assert.match(prompt, /inspect and modify files/i);
 });
 
+test("prompt includes the chat GitHub repository context", async () => {
+  const supabase = { from: () => responseQuery([]) };
+  const prompt = await buildPrompt(
+    supabase,
+    { body: "Check the current implementation", sender: { display_name: "Nana" } },
+    "chat-1",
+    "Nana",
+    { githubUrl: "https://github.com/example/project" },
+  );
+  assert.match(prompt, /Project repository \(shared chat context\): https:\/\/github\.com\/example\/project/);
+  assert.match(prompt, /local credentials and permissions/);
+});
+
 test("an accepted Team request receives terminal-equivalent execution instructions", async () => {
   const supabase = { from: () => responseQuery([]) };
   const prompt = await buildPrompt(
