@@ -83,7 +83,9 @@ begin
   order by created_at asc
   limit 1;
 
-  if v_binding_id is not null and v_message.sender_person_id <> new.person_id then
+  -- Self-mentions are valid: the owner may ask their own Team agent to act,
+  -- but the request still goes through the same approval gate.
+  if v_binding_id is not null then
     insert into public.agent_run_request (
       chat_id, message_id, requester_person_id, owner_person_id, agent_binding_id
     ) values (

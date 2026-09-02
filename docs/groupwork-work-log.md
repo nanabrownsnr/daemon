@@ -43,7 +43,7 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Invite by email | `find_person_by_email` RPC. Working. |
 | Real-time messaging (human → human) | Supabase Realtime via WAL. Confirmed across two separate browsers. |
 | Agent binding registration UI | Person selects Claude Code or Codex CLI, configures a label and project path, and stores it in `agent_binding`. |
-| @ mention autocomplete | Team chats target members through `message_mention`; Solo chats target exact persistent agent bindings through `message_agent_mention`. Handles multiple structured mentions per message. |
+| @ mention autocomplete | Team chats target members through `message_mention` (including the owner, whose self-mentions still require Accept/Reject); Solo chats target exact persistent agent bindings through `message_agent_mention`. Handles multiple structured mentions per message. |
 | Connector: auth + binding fetch | Connector logs in, fetches all bindings for this person across all chats from DB. No per-binding env config. |
 | Connector: gated Team + direct Solo subscriptions | Observes chat context, consumes owner-approved Team run requests, and invokes exact Solo bindings directly. |
 | Connector: multi-binding aware | One connector process manages all chats/agents for a person. Team mentions resolve the person's single chat binding; Solo mentions route by exact binding ID so agents never replace one another. |

@@ -453,9 +453,10 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     .single();
 
   if (!msg) { console.error("[groupwork] Could not fetch triggering message."); return false; }
-  // Team mentions target the person and should not make their own agent answer
-  // their own message. Solo mentions explicitly target a binding, so the owner
-  // is expected to be the sender and must be allowed through.
+  // Implicit Team mentions from the connector's owner are ignored as a safety
+  // fallback. Approved Team requests pass an explicit binding, which allows
+  // the owner to self-mention while preserving the approval gate. Solo
+  // mentions always explicitly target a binding.
   if (!explicitBinding && msg.sender_person_id === person.id) return false;
 
   if (isPaused()) {

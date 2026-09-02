@@ -275,17 +275,17 @@ export default function ChatMessages({
 
           return (
             <div key={m.id} className={`flex ${alignRight ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[70%] space-y-0.5 ${alignRight ? "items-end" : "items-start"} flex flex-col`}>
+              <div className={`${editingMessageId === m.id ? "w-full max-w-[70%]" : "max-w-[70%]"} space-y-0.5 ${alignRight ? "items-end" : "items-start"} flex flex-col`}>
                 {!alignRight && (
                   <span className="text-xs text-neutral-500 px-1">{senderLabel}</span>
                 )}
-                <div className={`px-3 py-2 rounded-2xl text-sm ${
+                <div className={`${editingMessageId === m.id ? "w-full" : ""} px-3 py-2 rounded-2xl text-sm ${
                   alignRight
                     ? "bg-neutral-100 text-neutral-900 rounded-br-sm"
                     : "bg-neutral-800 text-neutral-100 rounded-bl-sm"
                 }`}>
                   {editingMessageId === m.id ? (
-                    <div className="space-y-2 min-w-64">
+                    <div className="w-full min-w-0 space-y-2">
                       <textarea
                         value={editedBody}
                         onChange={(event) => setEditedBody(event.target.value)}

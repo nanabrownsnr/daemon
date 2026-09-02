@@ -39,7 +39,7 @@ export default function ChatSummary({ chatId }: { chatId: string }) {
   if (!context?.summary) {
     return (
       <p className="text-xs leading-5 text-neutral-600">
-        Shared context will appear after 20 messages.
+        Shared context will appear after at least two people or agents have spoken.
       </p>
     );
   }
