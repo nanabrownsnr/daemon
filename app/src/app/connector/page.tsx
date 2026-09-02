@@ -2,6 +2,7 @@ import Link from "next/link";
 import LoginCommand from "./login-command";
 import CompleteConnectorOnboarding from "./complete-connector-onboarding";
 import CopyCommand from "./copy-command";
+import AgentCliInstall from "./agent-cli-install";
 import SiteHeader from "../site-header";
 
 export default function ConnectorSetupPage() {
@@ -28,9 +29,7 @@ export default function ConnectorSetupPage() {
           </li>
           <li>
             <p className="font-medium">2. Install and authenticate an agent CLI</p>
-            <CopyCommand command="npm install -g @anthropic-ai/claude-code" />
-            <CopyCommand command="npm install -g @openai/codex" />
-            <p className="mt-2 text-neutral-500">These install the terminal CLIs, not the Claude or ChatGPT web apps. You only need the CLI you plan to use.</p>
+            <AgentCliInstall />
           </li>
           <li>
             <p className="font-medium">3. Download and install the private-beta connector</p>
