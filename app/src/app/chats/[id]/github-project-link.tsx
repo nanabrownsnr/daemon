@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { Button, ModalShell, TextInput } from "@/app/ui";
 
 export default function GithubProjectLink({ chatId, initialUrl, isOwner }: {
   chatId: string;
@@ -9,7 +10,7 @@ export default function GithubProjectLink({ chatId, initialUrl, isOwner }: {
   isOwner: boolean;
 }) {
   const [url, setUrl] = useState(initialUrl ?? "");
-  const [editing, setEditing] = useState(!initialUrl && isOwner);
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(initialUrl ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -32,23 +33,39 @@ export default function GithubProjectLink({ chatId, initialUrl, isOwner }: {
     setSaving(false);
   }
 
-  if (!editing && !url) {
+  if (!url) {
     if (!isOwner) return null;
-    return <button type="button" onClick={() => setEditing(true)} className="text-xs text-neutral-500 hover:text-neutral-300">+ add GitHub repository</button>;
+    return <>
+      <button type="button" onClick={() => { setDraft(""); setError(null); setEditing(true); }} className="text-xs text-neutral-500 transition-colors hover:text-neutral-200">+ add GitHub repository</button>
+      {editing && <GithubEditModal />}
+    </>;
   }
 
   return (
+    <>
     <div className="flex min-w-0 items-center gap-2 text-xs">
-      {editing ? <>
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="https://github.com/owner/repository" aria-label="GitHub repository URL" className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-300 outline-none focus:border-neutral-500" />
-        <button type="button" onClick={() => void save()} disabled={saving} className="text-neutral-300 hover:text-white disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
-        <button type="button" onClick={() => { setDraft(url); setEditing(false); setError(null); }} disabled={saving} className="text-neutral-600 hover:text-neutral-400">Cancel</button>
-      </> : <>
         <span className="text-neutral-600">repo</span>
         <a href={url} target="_blank" rel="noreferrer" className="truncate text-neutral-400 hover:text-neutral-200">{url}</a>
-        {isOwner && <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-neutral-600 hover:text-neutral-300">edit</button>}
-      </>}
+        {isOwner && <button type="button" onClick={() => { setDraft(url); setError(null); setEditing(true); }} className="shrink-0 text-neutral-600 hover:text-neutral-300">edit</button>}
       {error && <span role="alert" className="text-red-400">{error}</span>}
     </div>
+    {editing && <GithubEditModal />}
+    </>
   );
+
+  function GithubEditModal() {
+    return (
+      <ModalShell title="GitHub repository" onClose={() => { if (!saving) { setDraft(url); setEditing(false); setError(null); } }}>
+        <form onSubmit={(event) => { event.preventDefault(); void save(); }} className="space-y-4">
+          <p className="text-sm leading-5 text-neutral-400">Link the repository for this chat. It will be included in agent prompts; local credentials still control access.</p>
+          <TextInput value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="https://github.com/owner/repository" aria-label="GitHub repository URL" autoFocus />
+          {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="quiet" onClick={() => { setDraft(url); setEditing(false); setError(null); }} disabled={saving}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={saving || !draft.trim()}>{saving ? "Saving…" : "Save repository"}</Button>
+          </div>
+        </form>
+      </ModalShell>
+    );
+  }
 }
