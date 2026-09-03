@@ -12,6 +12,12 @@ const codexCommands: Record<Platform, string> = {
   macos: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
 };
 
+const claudeCommands: Record<Platform, string> = {
+  windows: "irm https://claude.ai/install.ps1 | iex",
+  linux: "curl -fsSL https://claude.ai/install.sh | bash",
+  macos: "curl -fsSL https://claude.ai/install.sh | bash",
+};
+
 function detectPlatform(): Platform {
   const browserNavigator = navigator as Navigator & { userAgentData?: { platform?: string } };
   const platform = (browserNavigator.userAgentData?.platform ?? navigator.platform ?? navigator.userAgent).toLowerCase();
@@ -32,33 +38,42 @@ export default function AgentCliInstall() {
 
   return (
     <div className="mt-2 space-y-3 rounded border border-neutral-800 p-3">
-      <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-400">
-        <label>
-          Agent{" "}
-          <select
-            value={agent}
-            onChange={(event) => setAgent(event.target.value as Agent)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-200"
-          >
-            <option value="codex">Codex CLI</option>
-            <option value="claude">Claude Code CLI</option>
-          </select>
-        </label>
-        <label>
-          Platform{" "}
-          <select
-            value={platform}
-            onChange={(event) => setPlatformOverride(event.target.value as Platform)}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-neutral-200"
-          >
-            <option value="windows">Windows PowerShell</option>
-            <option value="linux">Linux / WSL</option>
-            <option value="macos">macOS</option>
-          </select>
-        </label>
+      <div className="space-y-3 text-xs text-neutral-400">
+        <div className="space-y-1.5" role="group" aria-label="Agent CLI">
+          <span className="block text-neutral-500">Agent</span>
+          <div className="flex flex-wrap gap-1 rounded-lg border border-neutral-800 bg-neutral-950 p-1">
+            {(["codex", "claude"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setAgent(option)}
+                aria-pressed={agent === option}
+                className={`rounded-md px-3 py-1.5 transition-colors ${agent === option ? "bg-neutral-100 text-neutral-900" : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"}`}
+              >
+                {option === "codex" ? "Codex CLI" : "Claude Code CLI"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5" role="group" aria-label="Operating system">
+          <span className="block text-neutral-500">Platform</span>
+          <div className="flex flex-wrap gap-1 rounded-lg border border-neutral-800 bg-neutral-950 p-1">
+            {(["windows", "linux", "macos"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setPlatformOverride(option)}
+                aria-pressed={platform === option}
+                className={`rounded-md px-3 py-1.5 transition-colors ${platform === option ? "bg-neutral-100 text-neutral-900" : "text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"}`}
+              >
+                {option === "windows" ? "Windows" : option === "linux" ? "Linux / WSL" : "macOS"}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       <CopyCommand
-        command={agent === "codex" ? codexCommands[platform] : "npm install -g @anthropic-ai/claude-code"}
+        command={agent === "codex" ? codexCommands[platform] : claudeCommands[platform]}
       />
       <p className="text-xs leading-5 text-neutral-500">
         Install and authenticate this terminal CLI in the same environment where groupwork-connect will run. These are not the Claude or ChatGPT web/desktop apps.

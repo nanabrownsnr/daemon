@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import SegmentedControl from "./segmented-control";
+import { Button, TextInput } from "@/app/ui";
 
 export default function AgentModal({
   chatId,
@@ -91,35 +93,31 @@ export default function AgentModal({
             <form onSubmit={handleAdd} className="space-y-3">
               <div>
                 <label className="text-xs text-neutral-500 mb-1 block">Agent type</label>
-                <select
+                <SegmentedControl
                   value={agentType}
-                  onChange={(e) => setAgentType(e.target.value)}
-                  className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm text-neutral-300"
-                >
-                  <option value="claude_code">Claude Code</option>
-                  <option value="codex_cli">Codex CLI</option>
-                </select>
+                  onChange={setAgentType}
+                  options={[{ value: "claude_code", label: "Claude Code" }, { value: "codex_cli", label: "Codex CLI" }]}
+                  ariaLabel="Agent type"
+                />
               </div>
               <div>
                 <label className="text-xs text-neutral-500 mb-1 block">Label <span className="text-neutral-600">(optional)</span></label>
-                <input
+                <TextInput
                   type="text"
                   placeholder="e.g. Backend agent"
                   value={agentLabel}
                   onChange={(e) => setAgentLabel(e.target.value)}
                   required={isSolo}
-                  className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm"
                 />
                 {isSolo && <p className="text-xs text-neutral-600 mt-1">Required so you can mention this agent directly.</p>}
               </div>
               <div>
                 <label className="text-xs text-neutral-500 mb-1 block">Project path <span className="text-neutral-600">(optional)</span></label>
-                <input
+                <TextInput
                   type="text"
                   placeholder="/home/you/code/my-project"
                   value={projectPath}
                   onChange={(e) => setProjectPath(e.target.value)}
-                  className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm font-mono"
                 />
                 <p className="text-xs text-neutral-600 mt-1">Absolute path on your machine where the connector will run.</p>
               </div>
@@ -136,10 +134,10 @@ export default function AgentModal({
               )}
               {error && <p className="text-red-400 text-sm">{error}</p>}
               <div className="flex gap-2 justify-end pt-1">
-                <button type="button" onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200">Cancel</button>
-                <button type="submit" disabled={loading} className="px-4 py-1.5 text-sm rounded bg-neutral-100 text-neutral-900 font-medium disabled:opacity-50">
+                <Button type="button" variant="quiet" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button type="submit" variant="primary" disabled={loading}>
                   {loading ? "..." : "Add agent"}
-                </button>
+                </Button>
               </div>
             </form>
           </div>

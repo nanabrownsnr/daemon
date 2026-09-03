@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Button, TextInput } from "@/app/ui";
 
 export default function CreateChatForm({ personId }: { personId: string }) {
   const [open, setOpen] = useState(false);
@@ -83,7 +84,7 @@ export default function CreateChatForm({ personId }: { personId: string }) {
 
               <div>
                 <label htmlFor="new-chat-name" className="mb-1 block text-xs text-neutral-500">Name</label>
-                <input
+                <TextInput
                   id="new-chat-name"
                   type="text"
                   placeholder="Chat name"
@@ -91,17 +92,16 @@ export default function CreateChatForm({ personId }: { personId: string }) {
                   onChange={(e) => setName(e.target.value)}
                   required
                   autoFocus
-                  className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm"
                 />
               </div>
 
               {error && <p className="text-sm text-red-400">{error}</p>}
 
               <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200">Cancel</button>
-                <button type="submit" disabled={loading} className="rounded bg-neutral-100 px-4 py-1.5 text-sm font-medium text-neutral-900 disabled:opacity-50">
+                <Button type="button" variant="quiet" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button type="submit" variant="primary" disabled={loading}>
                   {loading ? "..." : "Create"}
-                </button>
+                </Button>
               </div>
             </form>
           </div>

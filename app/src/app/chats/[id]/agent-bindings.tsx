@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAgentPresence } from "./agent-presence";
+import SegmentedControl from "./segmented-control";
 
 type AgentBinding = {
   id: string;
@@ -122,18 +123,13 @@ export default function AgentBindings({ chatId, personId }: Props) {
             {/* Advice/Act are manual pins; Judgment delegates the per-topic
                 decision to the platform's learned trust rule. */}
             {isMe && (
-              <select
+              <SegmentedControl
                 value={b.mode}
-                onChange={(event) => handleSetMode(b, event.target.value)}
+                onChange={(value) => handleSetMode(b, value)}
+                options={MODES.map((m) => ({ value: m.key, label: m.label }))}
+                ariaLabel={`Response mode for ${b.agent_label ?? AGENT_TYPE_LABELS[b.agent_type] ?? b.agent_type}`}
                 disabled={loading === b.id}
-                aria-label={`Response mode for ${b.agent_label ?? AGENT_TYPE_LABELS[b.agent_type] ?? b.agent_type}`}
-                title="Advice/Act are manual overrides. Judgment lets the platform decide per-topic, based on how much trust that topic has earned."
-                className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none transition-colors hover:border-neutral-600 focus:border-neutral-500 disabled:opacity-50"
-              >
-                {MODES.map((m) => (
-                  <option key={m.key} value={m.key}>{m.label}</option>
-                ))}
-              </select>
+              />
             )}
 
 

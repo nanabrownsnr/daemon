@@ -7,7 +7,8 @@ development machine, pointed at your project directory.
 
 1. A groupwork account (signed up via the web app)
 2. At least one supported agent installed and authenticated:
-   - Claude Code CLI: `npm install -g @anthropic-ai/claude-code` (provides the `claude` command)
+   - Claude Code CLI on Windows PowerShell: `irm https://claude.ai/install.ps1 | iex` (provides the `claude` command)
+   - Claude Code CLI on macOS, Linux, or WSL: `curl -fsSL https://claude.ai/install.sh | bash` (provides the `claude` command)
    - Codex CLI on Windows PowerShell: `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"` (provides the `codex` command)
    - Codex CLI on Linux / WSL: `curl -fsSL https://chatgpt.com | bash` (provides the `codex` command)
 3. Node.js 20+
@@ -16,8 +17,9 @@ These are terminal CLIs, not the Claude or ChatGPT web/desktop apps. Codex's
 official installer is platform-specific; the npm package is not the reliable
 installation path for this setup. On Windows, install and run Codex and the
 connector from the same PowerShell or WSL environment. Claude Code is supported
-through WSL or Git Bash. Run `groupwork-connect doctor` after installation to
-verify that the executable is visible.
+through WSL or Git Bash. Claude Code's native installer is the primary setup
+path here; the npm package remains an alternative. Run `groupwork-connect doctor`
+after installation to verify that the executable is visible.
 
 ## Setup
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { Button, TextInput } from "@/app/ui";
 
 export default function InviteModal({ chatId }: { chatId: string }) {
   const [open, setOpen] = useState(false);
@@ -64,14 +65,13 @@ export default function InviteModal({ chatId }: { chatId: string }) {
               </button>
             </div>
             <form onSubmit={handleInvite} className="space-y-3">
-              <input
+              <TextInput
                 type="email"
                 placeholder="person@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoFocus
-                className="w-full rounded bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm"
               />
               {status && (
                 <p className={`text-sm ${status.startsWith("Added") ? "text-green-400" : "text-red-400"}`}>
@@ -79,20 +79,20 @@ export default function InviteModal({ chatId }: { chatId: string }) {
                 </p>
               )}
               <div className="flex gap-2 justify-end">
-                <button
+                <Button
                   type="button"
+                  variant="quiet"
                   onClick={() => setOpen(false)}
-                  className="px-3 py-1.5 text-sm text-neutral-400 hover:text-neutral-200"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
+                  variant="primary"
                   disabled={loading}
-                  className="px-4 py-1.5 text-sm rounded bg-neutral-100 text-neutral-900 font-medium disabled:opacity-50"
                 >
                   {loading ? "..." : "Add"}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
