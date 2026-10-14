@@ -23,12 +23,14 @@ after installation to verify that the executable is visible.
 
 ## Setup
 
-Install the connector from npm, then authorize your computer in the browser.
-The connector does not ask for or store your password. The same install command
-works in PowerShell, macOS Terminal, and Linux shells.
+Download the connector tarball from the groupwork `/connector` page. Open a
+terminal in the download folder and install it locally from the tarball, then
+authorize your computer in the browser. This works in PowerShell, macOS
+Terminal, and Linux shells; it does not depend on the package being published
+to the npm registry.
 
 ```bash
-npm install -g @groupwork/connect
+npm install -g ./groupwork-connect-0.7.3.tgz
 groupwork-connect login --app-url https://groupwork-ai.vercel.app
 groupwork-connect doctor
 ```

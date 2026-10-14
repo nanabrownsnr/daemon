@@ -32,11 +32,29 @@ export default function ConnectorSetupPage() {
             <AgentCliInstall />
           </li>
           <li>
-            <p className="font-medium">3. Install the connector</p>
-            <p className="mt-1 text-neutral-500">Run this same command in PowerShell, Terminal, or your Linux shell:</p>
-            <CopyCommand command="npm install -g @groupwork/connect" />
+            <p className="font-medium">3. Download and install the connector</p>
+            <p className="mt-1 text-neutral-500">Download the current cross-platform connector package:</p>
+            <a
+              href="/downloads/groupwork-connect-0.7.3.tgz"
+              download
+              className="mt-2 inline-block text-neutral-300 underline underline-offset-4 hover:text-white"
+            >
+              Download connector 0.7.3
+            </a>
+            <p className="mt-3 text-neutral-500">Open a terminal in your Downloads folder, then install the downloaded package:</p>
+            <div className="mt-2 space-y-2">
+              <div>
+                <p className="mb-1 text-xs text-neutral-600">PowerShell</p>
+                <CopyCommand command="cd $HOME\\Downloads" />
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-neutral-600">macOS or Linux</p>
+                <CopyCommand command="cd ~/Downloads" />
+              </div>
+            </div>
+            <CopyCommand command="npm install -g ./groupwork-connect-0.7.3.tgz" />
             <div className="mt-3 space-y-2 rounded border border-neutral-800 p-3 text-neutral-500">
-              <p>If npm reports a permissions error, use a user-owned Node.js installation such as nvm, then rerun the install without <code className="text-neutral-300">sudo</code>.</p>
+              <p>If npm reports a permissions error, use a user-owned Node.js installation such as nvm. Run the command again without <code className="text-neutral-300">sudo</code> when npm already has global install permissions.</p>
             </div>
             <p className="mt-3 text-xs leading-5 text-neutral-600">
               Allow roughly 450 MB of disk space for the cross-platform local inference runtime and its 23 MB model cache. First-start model preparation runs in the background; mentions continue using the safe fallback until it is ready.

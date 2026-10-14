@@ -48,10 +48,12 @@ private-beta project and review SQL errors rather than skipping a failed step.
    Install the CLI inside the same Linux, WSL, Git Bash, or macOS environment
    where `groupwork-connect` will run; installing a desktop/web app is not
    sufficient.
-2. Install the connector from `/connector` with `npm install -g
-   @groupwork/connect`. The same command works in PowerShell, macOS Terminal,
-   and Linux shells. Use Node.js 22 or newer; a user-owned Node install such as
-   nvm avoids global npm permissions errors.
+2. Download the connector tarball from `/connector`, open a terminal in the
+   download folder, and run `npm install -g
+   ./groupwork-connect-0.7.3.tgz`. This works in PowerShell, macOS Terminal,
+   and Linux shells without an npm registry publication. Use Node.js 22 or
+   newer; a user-owned Node install such as nvm avoids global npm permission
+   errors.
 3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
    `groupwork-connect start`. Doctor must report a topic catalog version before
