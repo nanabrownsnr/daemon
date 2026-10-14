@@ -12,9 +12,33 @@ process.env.GROUPWORK_EMAIL ??= "regression@example.com";
 process.env.GROUPWORK_PASSWORD ??= "regression-password";
 process.env.GROUPWORK_CONFIG_DIR = mkdtempSync(join(tmpdir(), "groupwork-regression-"));
 
-const { classifyQuestion, classifyMessageTopic, buildPrompt, routeResponse, pause, resume, resolveMentionBinding, enqueueBindingWork } = await import("../src/connector.js");
+const { classifyQuestion, classifyMessageTopic, buildPrompt, routeResponse, pause, resume, resolveMentionBinding, enqueueBindingWork, enqueueMentionWork, resolveAgentHandoffTarget, sendAgentHandoff } = await import("../src/connector.js");
 const { AGENT_TYPES } = await import("../src/agent-types.js");
+const { browserLaunchSpec } = await import("../src/auth.js");
+const { agentExecutable, isSupportedNodeVersion } = await import("../src/platform.js");
 const { LocalTopicClassifier } = await import("../src/topic-classifier.js");
+
+test("platform-specific agent executables and supported Node versions", () => {
+  assert.equal(agentExecutable("codex", "win32"), "codex.exe");
+  assert.equal(agentExecutable("claude", "win32"), "claude.cmd");
+  assert.equal(agentExecutable("codex", "linux"), "codex");
+  assert.equal(agentExecutable("codex", "darwin"), "codex");
+  assert.equal(isSupportedNodeVersion("18.20.8"), false);
+  assert.equal(isSupportedNodeVersion("20.19.0"), false);
+  assert.equal(isSupportedNodeVersion("22.0.0"), true);
+  assert.equal(isSupportedNodeVersion("24.1.2"), true);
+});
+
+test("Windows browser launch preserves authorization URL query parameters", () => {
+  const url = "https://groupwork.example/connector/authorize?callback=http%3A%2F%2F127.0.0.1%3A1234%2Fcallback&state=abc123";
+  const launch = browserLaunchSpec(url, "win32");
+  assert.equal(launch.command, "cmd");
+  assert.equal(launch.args[0], "/d");
+  assert.equal(launch.args[1], "/s");
+  assert.equal(launch.args[2], "/c");
+  assert.equal(launch.args[3], `start "" "${url}"`);
+  assert.equal(browserLaunchSpec(url, "linux").args[0], url);
+});
 
 function responseQuery(data) {
   return {
@@ -231,6 +255,31 @@ test("Solo prompt keeps the selected agent identity", async () => {
   assert.match(prompt, /log location/);
 });
 
+test("Solo prompt gives the agent a separate peer directory with role-based routing guidance", async () => {
+  const supabase = { from: () => responseQuery([]) };
+  const prompt = await buildPrompt(
+    supabase,
+    { body: "Split this task", sender: { display_name: "Nana" } },
+    "solo-chat",
+    "Nana",
+    {
+      isSolo: true,
+      agentLabel: "Planner",
+      currentBindingId: "planner",
+      availableAgents: [
+        { id: "planner", agent_type: "codex_cli", agent_label: "Planner", agent_role: "Technical planning" },
+        { id: "backend", agent_type: "claude_code", agent_label: "Backend", agent_role: "Backend engineer", agent_description: "Owns APIs and Postgres migrations." },
+      ],
+      handoffChain: [],
+    },
+  );
+  assert.match(prompt, /Solo agent directory \(owner-provided profiles; separate from shared conversation context\)/);
+  assert.match(prompt, /Backend \[available for handoff\].*role: Backend engineer.*description: Owns APIs and Postgres migrations/);
+  assert.match(prompt, /choose the best-fit agent/);
+  assert.match(prompt, /no fixed handoff count/);
+  assert.match(prompt, /Each agent may handle a request at most once/);
+});
+
 test("prompt layers a shared summary under the recent raw delta", async () => {
   const supabase = { from: () => responseQuery([
     { body: "The latest correction", sender_type: "human", sender: { display_name: "Ama" }, agent: null },
@@ -301,6 +350,55 @@ test("work is serialized per binding while different bindings remain independent
   assert.deepEqual(events, ["a1-start", "b1", "a1-end", "a2"]);
 });
 
+test("duplicate realtime and catch-up deliveries invoke one mention once", async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const task = async () => { calls += 1; await gate; return true; };
+  const first = enqueueMentionWork("binding-dedupe-test", "message-dedupe-test", task);
+  const duplicate = enqueueMentionWork("binding-dedupe-test", "message-dedupe-test", task);
+  release();
+  assert.deepEqual(await Promise.all([first, duplicate]), [true, false]);
+  assert.equal(calls, 1);
+});
+
+test("Solo agent handoffs match one exact named peer and reject ambiguity", () => {
+  const peers = [
+    { id: "claude", agent_label: "Claude Review" },
+    { id: "codex", agent_label: "Codex" },
+  ];
+  assert.equal(resolveAgentHandoffTarget("Please continue with @Codex", peers, "claude").target.id, "codex");
+  assert.equal(resolveAgentHandoffTarget("@Codex should inspect this", peers, "claude").target.id, "codex");
+  assert.equal(resolveAgentHandoffTarget("Ask @Codexian about it", peers, "claude").target, null);
+  const duplicateLabels = [...peers, { id: "codex-2", agent_label: "Codex" }];
+  assert.equal(resolveAgentHandoffTarget("@Codex", duplicateLabels, "claude").ambiguous, true);
+  assert.equal(resolveAgentHandoffTarget("@Claude Review", peers, "claude").target, null);
+});
+
+test("handoff RPC stores the source chain with the target delivery", async () => {
+  let call;
+  const result = await sendAgentHandoff({
+    async rpc(name, args) { call = { name, args }; return { data: { id: "handoff-message" }, error: null }; },
+  }, {
+    chatId: "solo-chat",
+    sourceBindingId: "claude",
+    targetBindingId: "codex",
+    body: "Please review @Codex",
+    chain: ["claude"],
+  });
+  assert.deepEqual(call, {
+    name: "send_agent_handoff",
+    args: {
+      p_chat_id: "solo-chat",
+      p_source_binding_id: "claude",
+      p_target_binding_id: "codex",
+      p_body: "Please review @Codex",
+      p_handoff_chain: ["claude"],
+    },
+  });
+  assert.deepEqual(result, { ok: true, message: { id: "handoff-message" } });
+});
+
 test("Advice creates a private draft with classification and trigger", async () => {
   const db = routingClient();
   await routeResponse(db, "person-1", { id: "binding-1", mode: "advice" }, "chat-1", "Draft", {
@@ -351,12 +449,13 @@ test("Judgment RPC errors and catch-up both fail safely to Advice", async () => 
 
 test("Claude adapter is read-only, resumes sessions, and parses JSON output", async () => {
   let invocation;
+  let stdinPayload;
   const fakeSpawn = (command, args, options) => {
     invocation = { command, args, options };
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
-    child.stdin = { end() {} };
+    child.stdin = { end(payload) { stdinPayload = payload; } };
     queueMicrotask(() => {
       child.stdout.emit("data", Buffer.from(JSON.stringify({ result: "Done", session_id: "new-session" })));
       child.emit("close", 0);
@@ -364,11 +463,37 @@ test("Claude adapter is read-only, resumes sessions, and parses JSON output", as
     return child;
   };
   const result = await AGENT_TYPES.claude_code.invoke("Prompt", "/tmp/project", "old-session", fakeSpawn);
-  assert.equal(invocation.command, "claude");
+  assert.equal(invocation.command, agentExecutable("claude"));
   assert.ok(invocation.args.includes("Read,Grep,Glob,LS"));
+  assert.ok(invocation.args.includes("--input-format"));
+  assert.ok(!invocation.args.includes("Prompt"));
+  assert.deepEqual(JSON.parse(stdinPayload), {
+    type: "user",
+    message: { role: "user", content: [{ type: "text", text: "Prompt" }] },
+  });
+  assert.equal(invocation.options.shell, process.platform === "win32");
   assert.deepEqual(invocation.args.slice(-2), ["--resume", "old-session"]);
   assert.equal(invocation.options.cwd, "/tmp/project");
   assert.deepEqual(result, { response: "Done", sessionId: "new-session" });
+});
+
+test("Claude adapter returns actionable Windows process launch errors", async () => {
+  const fakeSpawn = () => {
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = { end() {} };
+    queueMicrotask(() => {
+      const error = new Error("spawn EINVAL");
+      error.code = "EINVAL";
+      child.emit("error", error);
+    });
+    return child;
+  };
+  const result = await AGENT_TYPES.claude_code.invoke("Prompt", "/tmp/project", null, fakeSpawn);
+  assert.match(result.error, /Could not launch/);
+  assert.match(result.error, /spawn EINVAL/);
+  assert.equal(result.response, null);
 });
 
 test("Claude recovers the assistant message when the final result event is empty", async () => {
@@ -460,7 +585,7 @@ test("Codex adapter is read-only, resumes sessions, and parses JSONL output", as
     fakeSpawn,
   );
 
-  assert.equal(invocation.command, "codex");
+  assert.equal(invocation.command, agentExecutable("codex"));
   assert.ok(invocation.args.includes("read-only"));
   assert.ok(invocation.args.includes("resume"));
   assert.deepEqual(

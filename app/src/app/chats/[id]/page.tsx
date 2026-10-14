@@ -51,7 +51,7 @@ export default async function ChatPage({
 
   const { data: chatBindings } = await supabase
     .from("agent_binding")
-    .select("id, person_id, agent_type, agent_label")
+    .select("id, person_id, agent_type, agent_label, agent_role, agent_description")
     .eq("chat_id", chatId);
 
   const myBindings = (chatBindings ?? []).filter((binding) => binding.person_id === myPerson.id);
@@ -107,6 +107,7 @@ export default async function ChatPage({
               <AgentBindings
                 chatId={chatId}
                 personId={myPerson.id}
+                isSolo={!chat.is_group}
               />
             </CollapsibleSidebarSection>
 

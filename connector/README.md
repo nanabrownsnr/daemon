@@ -11,7 +11,7 @@ development machine, pointed at your project directory.
    - Claude Code CLI on macOS, Linux, or WSL: `curl -fsSL https://claude.ai/install.sh | bash` (provides the `claude` command)
    - Codex CLI on Windows PowerShell: `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"` (provides the `codex` command)
    - Codex CLI on Linux / WSL: `curl -fsSL https://chatgpt.com | bash` (provides the `codex` command)
-3. Node.js 20+
+3. Node.js 22+
 
 These are terminal CLIs, not the Claude or ChatGPT web/desktop apps. Codex's
 official installer is platform-specific; the npm package is not the reliable
@@ -23,24 +23,22 @@ after installation to verify that the executable is visible.
 
 ## Setup
 
-Install the private-beta package supplied by groupwork, then authorize your
-computer in the browser. The connector does not ask for or store your password.
+Install the connector from npm, then authorize your computer in the browser.
+The connector does not ask for or store your password. The same install command
+works in PowerShell, macOS Terminal, and Linux shells.
 
 ```bash
-npm install -g ./groupwork-connector.tgz
+npm install -g @groupwork/connect
 groupwork-connect login --app-url https://groupwork-ai.vercel.app
 groupwork-connect doctor
 ```
 
-`doctor` also verifies that the platform topic catalog required by connector
-0.7.1 is installed. If it reports `Topic catalog unavailable`, the groupwork
-operator must apply `docs/sql/topic-classification.sql` before UAT.
+`doctor` also verifies that the platform topic catalog is installed. If it
+reports `Topic catalog unavailable`, the groupwork operator must apply
+`docs/sql/topic-classification.sql` before UAT.
 
-If npm reports `EACCES` for `/usr/local`, the machine's global npm directory is
-root-owned. On Linux, use `sudo npm install -g ./groupwork-connector.tgz` (and
-`sudo npm uninstall -g @daemon/connect` when upgrading from the old private-beta
-package). Do not use `sudo` when global npm installs already work without it;
-a user-owned Node installation such as nvm avoids this requirement.
+If npm reports a permissions error, use a user-owned Node.js installation such
+as nvm and rerun the install without `sudo`.
 
 ## Running
 

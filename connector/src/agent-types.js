@@ -1,18 +1,23 @@
 import { spawn } from "child_process";
+import { agentExecutable } from "./platform.js";
 
-function executable(command) {
-  return process.platform === "win32" ? `${command}.cmd` : command;
+function invocationResult({ response, sessionId, error }) {
+  return error ? { response, sessionId, error } : { response, sessionId };
 }
 
 export const AGENT_TYPES = {
   claude_code: {
     label: "Claude Code",
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
+      // Claude session IDs are UUIDs. Do not pass unexpected remote values to
+      // cmd.exe, which is used only to launch the Windows .cmd shim.
+      if (sessionId && !/^[\w-]+$/.test(sessionId)) sessionId = null;
       const allowedTools = options.workspaceWrite
         ? "Read,Grep,Glob,LS,Edit,Write,Bash"
         : "Read,Grep,Glob,LS";
       const baseArgs = [
-        "--print", prompt,
+        "--print",
+        "--input-format", "stream-json",
         "--output-format", "stream-json",
         "--verbose",
         "--allowedTools", allowedTools,
@@ -23,10 +28,13 @@ export const AGENT_TYPES = {
 
       const runClaude = (args, fallbackSessionId) => new Promise((resolve) => {
         console.log(`[groupwork] Spawning Claude with args:`, args);
-        const child = spawnProcess(executable("claude"), args, {
+        const child = spawnProcess(agentExecutable("claude"), args, {
           cwd: projectDir,
           env: process.env,
           stdio: ["pipe", "pipe", "pipe"],
+          // Windows npm installs expose Claude as a .cmd shim. Keep chat text
+          // on stdin as JSONL so it never passes through cmd.exe parsing.
+          shell: process.platform === "win32" && agentExecutable("claude").endsWith(".cmd"),
         });
 
         let stdout = "";
@@ -94,8 +102,9 @@ export const AGENT_TYPES = {
         });
 
         child.on("error", (err) => {
-          console.error(`[groupwork] Failed to start Claude Code CLI (${executable("claude")}). Install/authenticate Claude Code CLI, then run groupwork-connect doctor: ${err.message}`);
-          finish({ response: null, sessionId: fallbackSessionId, failed: true });
+          const detail = `Could not launch ${agentExecutable("claude")}: ${err.message}. Install/authenticate Claude Code CLI, then run groupwork-connect doctor.`;
+          console.error(`[groupwork] ${detail}`);
+          finish({ response: null, sessionId: fallbackSessionId, failed: true, error: detail });
         });
 
         child.on("close", (code) => {
@@ -114,13 +123,14 @@ export const AGENT_TYPES = {
               }
             }
             console.error(`[groupwork] Claude exited with code ${code}${detail ? `: ${String(detail).slice(0, 500)}` : "."}`);
-            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            const agentError = `Claude Code exited with code ${code}${detail ? `: ${String(detail).slice(0, 500)}` : "."}`;
+            finish({ response: null, sessionId: fallbackSessionId, failed: true, error: agentError });
             return;
           }
 
           if (!stdout || stdout.trim().length === 0) {
             console.error(`[groupwork] FAILURE: Process exited with code 0 but stdout is completely empty.`);
-            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            finish({ response: null, sessionId: fallbackSessionId, failed: true, error: "Claude Code exited without producing a response." });
             return;
           }
 
@@ -140,34 +150,37 @@ export const AGENT_TYPES = {
           console.error("[groupwork] Claude completed successfully but produced no textual assistant response.");
           if (parseError) console.error("[groupwork] Last Claude JSONL parse error:", parseError.message);
           console.error(`[groupwork] Claude event payload preview: ${stdout.trim().slice(0, 1200)}`);
-          finish({ response: null, sessionId: discoveredSessionId, failed: true });
+          finish({ response: null, sessionId: discoveredSessionId, failed: true, error: "Claude Code completed without a textual response." });
         });
 
-        child.stdin.end();
+        child.stdin.end(JSON.stringify({
+          type: "user",
+          message: { role: "user", content: [{ type: "text", text: prompt }] },
+        }) + "\n");
       });
 
       if (sessionId) {
         console.log(`[groupwork] Resuming specific session ID: ${sessionId}`);
         const resumed = await runClaude([...baseArgs, "--resume", sessionId], sessionId);
-        return { response: resumed.response, sessionId: resumed.sessionId };
+        return invocationResult(resumed);
       }
 
       console.log(`[groupwork] No session ID yet, using --continue for latest conversation.`);
       const continued = await runClaude([...baseArgs, "--continue"], null);
       if (!continued.failed) {
-        return { response: continued.response, sessionId: continued.sessionId };
+        return invocationResult(continued);
       }
 
       console.log("[groupwork] No resumable Claude conversation found; starting a new one.");
       const created = await runClaude(baseArgs, null);
-      return { response: created.response, sessionId: created.sessionId };
+      return invocationResult(created);
     },
   },
   codex_cli: {
     label: "Codex CLI",
     invoke: async (prompt, projectDir, sessionId, spawnProcess = spawn, options = {}) => {
       const runCodex = (args, fallbackSessionId) => new Promise((resolve) => {
-        const child = spawnProcess(executable("codex"), args, {
+        const child = spawnProcess(agentExecutable("codex"), args, {
           cwd: projectDir,
           env: process.env,
           stdio: ["pipe", "pipe", "pipe"],
@@ -232,26 +245,30 @@ export const AGENT_TYPES = {
         });
 
         child.on("error", (error) => {
-          console.error(`[groupwork] Failed to start Codex CLI (${executable("codex")}). Install/authenticate Codex CLI, then run groupwork-connect doctor: ${error.message}`);
-          finish({ response: null, sessionId: fallbackSessionId, failed: true });
+          const detail = `Could not launch ${agentExecutable("codex")}: ${error.message}. Install/authenticate Codex CLI, then run groupwork-connect doctor.`;
+          console.error(`[groupwork] ${detail}`);
+          finish({ response: null, sessionId: fallbackSessionId, failed: true, error: detail });
         });
 
         child.on("close", (code) => {
           consumeLine(lineBuffer);
           if (code !== 0) {
-            console.error(`[groupwork] Codex exited with code ${code}: ${stderr.trim()}`);
-            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            const detail = `Codex exited with code ${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 500)}` : "."}`;
+            console.error(`[groupwork] ${detail}`);
+            finish({ response: null, sessionId: fallbackSessionId, failed: true, error: detail });
             return;
           }
 
           if (parseError && !response) {
             console.error("[groupwork] Failed to parse Codex JSONL output:", parseError.message);
-            finish({ response: null, sessionId: fallbackSessionId, failed: true });
+            finish({ response: null, sessionId: fallbackSessionId, failed: true, error: `Failed to parse Codex JSONL output: ${parseError.message}` });
             return;
           }
 
           if (!response) {
             console.error("[groupwork] Codex completed without an agent message.");
+            finish({ response: null, sessionId: newSessionId, failed: true, error: "Codex completed without an agent message. Check the connector terminal and run `node src/cli.js doctor`." });
+            return;
           }
           finish({ response, sessionId: newSessionId, failed: false });
         });
@@ -279,7 +296,7 @@ export const AGENT_TYPES = {
           ...baseArgs,
           "resume", "--json", "--skip-git-repo-check", sessionId, prompt,
         ], sessionId);
-        return { response: result.response, sessionId: result.sessionId };
+        return invocationResult(result);
       }
 
       console.log(`[groupwork] Attaching to the latest Codex session in ${projectDir}.`);
@@ -289,7 +306,7 @@ export const AGENT_TYPES = {
       ], null);
 
       if (!latest.failed) {
-        return { response: latest.response, sessionId: latest.sessionId };
+        return invocationResult(latest);
       }
 
       console.log("[groupwork] No resumable Codex session found; starting a new one.");
@@ -297,7 +314,7 @@ export const AGENT_TYPES = {
         ...baseArgs,
         "--json", "--skip-git-repo-check", prompt,
       ], null);
-      return { response: created.response, sessionId: created.sessionId };
+      return invocationResult(created);
     },
   },
 };

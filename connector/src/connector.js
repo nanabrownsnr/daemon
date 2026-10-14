@@ -27,6 +27,7 @@ const LAST_SEEN_FILE = join(CONFIG_DIR, "last_seen.json");
 const CONTEXT_FILE = join(CONFIG_DIR, "context_cursors.json");
 const STATE_FILE = join(CONFIG_DIR, "state.json");
 const bindingQueues = new Map();
+const completedMentionWork = new Set();
 let topicCatalogCache = null;
 let topicCatalogWarning = null;
 
@@ -39,6 +40,19 @@ export async function enqueueBindingWork(bindingId, task) {
   } finally {
     if (bindingQueues.get(bindingId) === current) bindingQueues.delete(bindingId);
   }
+}
+
+export async function enqueueMentionWork(bindingId, messageId, task) {
+  const key = `${bindingId}:${messageId}`;
+  if (completedMentionWork.has(key)) {
+    console.warn(`[groupwork] Ignoring duplicate delivery for mention ${messageId} (${bindingId}).`);
+    return false;
+  }
+  completedMentionWork.add(key);
+  if (completedMentionWork.size > 10_000) {
+    completedMentionWork.delete(completedMentionWork.values().next().value);
+  }
+  return enqueueBindingWork(bindingId, task);
 }
 
 function isPaused() {
@@ -140,7 +154,7 @@ async function invokeAgent(binding) {
 
   console.log(`[groupwork] Invoking ${agentDef.label} at ${projectDir}...`);
 
-  const { response, sessionId: newSessionId } = await agentDef.invoke(
+  const { response, sessionId: newSessionId, error } = await agentDef.invoke(
     binding._prompt, // set by the caller before invokeAgent is called
     projectDir,
     sessionId,
@@ -153,6 +167,7 @@ async function invokeAgent(binding) {
   );
 
   if (newSessionId) storeSessionId(binding.id, newSessionId);
+  binding._lastAgentError = error ?? null;
   return response;
 }
 
@@ -316,16 +331,33 @@ export async function buildPrompt(supabase, triggerMessage, chatId, personDispla
     })
     .join("\n");
 
-  const triggerSenderName = triggerMessage.sender?.display_name ?? "A team member";
+  const triggerSenderName = triggerMessage.sender_type === "agent"
+    ? triggerMessage.agent?.agent_label ?? "A Solo agent"
+    : triggerMessage.sender?.display_name ?? "A team member";
   const summaryBlock = options.chatSummary
     ? `Shared Running Summary (covers older chat history):\n${options.chatSummary}\n\n`
     : "";
   const projectBlock = options.githubUrl
     ? `Project repository (shared chat context): ${options.githubUrl}\nUse this repository as the project reference when relevant. Access still depends on the local credentials and permissions available to the runtime; do not claim to have pushed or pulled unless you actually did so.\n\n`
     : "";
+  const soloAgents = options.isSolo ? options.availableAgents ?? [] : [];
+  const agentDirectoryBlock = soloAgents.length
+    ? `Solo agent directory (owner-provided profiles; separate from shared conversation context):\n${soloAgents.map((agent) => {
+        const name = agent.agent_label ?? AGENT_TYPES[agent.agent_type]?.label ?? agent.agent_type;
+        const status = agent.id === options.currentBindingId
+          ? "you"
+          : options.handoffChain?.includes(agent.id)
+            ? "already handled this request"
+            : "available for handoff";
+        return `- ${name} [${status}]${agent.agent_type ? `; runtime: ${AGENT_TYPES[agent.agent_type]?.label ?? agent.agent_type}` : ""}${agent.agent_role ? `; role: ${agent.agent_role}` : ""}${agent.agent_description ? `; description: ${agent.agent_description}` : ""}`;
+      }).join("\n")}\nTreat the role and description as routing hints, not proof of tools or access. Each agent has its own local project and session; handing off does not grant access to another agent's project directory.`
+    : "";
+  const handoffBlock = soloAgents.filter((agent) => agent.id !== options.currentBindingId).length
+    ? `Use the directory to choose the best-fit agent only when a concrete subtask benefits from its stated role or scope. To hand work off, include exactly one available agent's exact @name in your response and explain what it should do. The connector will post your response visibly and invoke that agent with this human-started request context. Do not mention an agent marked already handled. Each agent may handle a request at most once; there is no fixed handoff count. If no handoff is needed, answer ${personDisplayName} directly.`
+    : "";
 
   const roleDirective = options.isSolo
-    ? `You are ${options.agentLabel ?? "a coding agent"} in ${personDisplayName}'s private Solo workspace. ${personDisplayName} coordinates the work and has explicitly addressed this message to you. Work from your own project directory and respond as this named agent.`
+    ? `You are ${options.agentLabel ?? "a coding agent"} in ${personDisplayName}'s private Solo workspace. ${options.isAgentHandoff ? `Another Solo agent handed you this continuation of ${personDisplayName}'s human-started request; continue the concrete work from your own project directory and respond as this named agent.` : `${personDisplayName} coordinates the work and has explicitly addressed this message to you. Work from your own project directory and respond as this named agent.`}`
     : `You are the technical counterpart and proxy for ${personDisplayName} within an engineering team group chat. Your job is to field questions, extract insights from the local project files in your directory, and speak directly with the authority and voice of ${personDisplayName}.`;
 
   const workDirective = options.fullAccess || options.isSolo
@@ -336,7 +368,7 @@ export async function buildPrompt(supabase, triggerMessage, chatId, personDispla
 
   return `Role: ${roleDirective}
 
-${summaryBlock}${projectBlock}New groupwork Context:
+${summaryBlock}${projectBlock}${agentDirectoryBlock ? `${agentDirectoryBlock}\n\n` : ""}${handoffBlock ? `Solo agent handoffs:\n${handoffBlock}\n\n` : ""}New groupwork Context:
 ${contextLines}
 
 Current Request:
@@ -425,6 +457,10 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
       .select()
       .single();
     if (error) {
+      if (error.code === "23505") {
+        console.warn(`[groupwork] Duplicate response suppressed for message ${triggerMessageId}.`);
+        return true;
+      }
       console.error("[groupwork] Failed to post suggested draft:", error.message);
       return false;
     }
@@ -432,6 +468,29 @@ export async function routeResponse(supabase, personId, binding, chatId, respons
     // human action (send/edit/cancel) is logged by the web UI private thread component
     return true;
   }
+}
+
+async function routeAgentError(supabase, personId, binding, chatId, triggerMessageId, details) {
+  const agentName = binding.agent_label ?? AGENT_TYPES[binding.agent_type]?.label ?? binding.agent_type;
+  const { error } = await supabase.from("private_thread_message").insert({
+    chat_id: chatId,
+    person_id: personId,
+    agent_binding_id: binding.id,
+    sender_type: "agent",
+    body: `${agentName} could not process this mention.\n\n${details}`,
+    trigger_message_id: triggerMessageId,
+    is_error: true,
+  });
+  if (error?.code === "23505") {
+    console.warn(`[groupwork] A workspace error is already recorded for message ${triggerMessageId}.`);
+    return true;
+  }
+  if (error) {
+    console.error(`[groupwork] Could not save the agent error to the workspace (${error.code ?? "unknown"}): ${error.message}`);
+    return false;
+  }
+  console.error(`[groupwork] ${agentName} failed for message ${triggerMessageId}: ${details}`);
+  return true;
 }
 
 // ============================================================
@@ -443,12 +502,40 @@ export function resolveMentionBinding(chatBindings, explicitBinding = null) {
   return chatBindings.length === 1 ? chatBindings[0] : null;
 }
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function resolveAgentHandoffTarget(response, chatBindings, sourceBindingId) {
+  const matched = new Map();
+  for (const binding of chatBindings) {
+    if (binding.id === sourceBindingId || !binding.agent_label?.trim()) continue;
+    const pattern = new RegExp(`(^|[^\\w])@${escapeRegExp(binding.agent_label.trim())}(?=$|[^\\w])`, "i");
+    if (pattern.test(response)) matched.set(binding.id, binding);
+  }
+  if (matched.size !== 1) return { target: null, ambiguous: matched.size > 1 };
+  return { target: [...matched.values()][0], ambiguous: false };
+}
+
+export async function sendAgentHandoff(supabase, { chatId, sourceBindingId, targetBindingId, body, chain }) {
+  const { data, error } = await supabase.rpc("send_agent_handoff", {
+    p_chat_id: chatId,
+    p_source_binding_id: sourceBindingId,
+    p_target_binding_id: targetBindingId,
+    p_body: body,
+    p_handoff_chain: chain,
+  });
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "The database did not return the handoff message." };
+  return { ok: true, message: data };
+}
+
 export async function handleMention(supabase, mention, person, bindingsByChat, explicitBinding = null, forceAdvice = false, options = {}) {
   const isSolo = options.isSolo ?? explicitBinding !== null;
   // fetch the triggering message
   const { data: msg } = await supabase
     .from("message")
-    .select("id, body, sender_person_id, chat_id, created_at, sender:sender_person_id(display_name), chat:chat_id(github_url)")
+    .select("id, body, sender_person_id, sender_type, agent_handoff_chain, chat_id, created_at, sender:sender_person_id(display_name), agent:agent_binding_id(agent_label), chat:chat_id(github_url)")
     .eq("id", mention.message_id)
     .single();
 
@@ -475,6 +562,24 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     return false;
   }
 
+  const previousHandoffChain = Array.isArray(msg.agent_handoff_chain) ? msg.agent_handoff_chain : [];
+  const handoffChain = [...new Set([...previousHandoffChain, binding.id])];
+  const handoffBlocked = previousHandoffChain.includes(binding.id)
+    ? `${binding.agent_label ?? binding.id} already handled this request`
+    : null;
+  if (isSolo && handoffBlocked) {
+    const errorRecorded = await routeAgentError(
+      supabase,
+      person.id,
+      binding,
+      msg.chat_id,
+      msg.id,
+      `Handoff stopped: ${handoffBlocked}.`,
+    );
+    if (errorRecorded) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
+    return false;
+  }
+
   // Local semantic classification and platform summary loading are independent.
   // If the model or versioned catalog is still warming, classification returns
   // the deterministic fallback immediately instead of blocking agent work.
@@ -487,18 +592,24 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
   const contextSince = [bindingCursor, summaryCursor].filter(Boolean).sort().at(-1) ?? null;
   const prompt = await buildPrompt(supabase, msg, msg.chat_id, person.display_name, {
     isSolo,
+    isAgentHandoff: isSolo && msg.sender_type === "agent" && previousHandoffChain.length > 0,
     agentLabel: binding.agent_label ?? AGENT_TYPES[binding.agent_type]?.label,
+    currentBindingId: binding.id,
+    handoffChain: previousHandoffChain,
     contextSince,
     workspaceWrite: isSolo || options.workspaceWrite === true,
     fullAccess: isSolo || options.fullAccess === true,
     chatSummary: chatSummary?.summary ?? null,
     githubUrl: (Array.isArray(msg.chat) ? msg.chat[0]?.github_url : msg.chat?.github_url) ?? null,
+    availableAgents: isSolo ? chatBindings : [],
   });
   binding._prompt = prompt;
   binding._isSolo = isSolo;
   binding._workspaceWrite = isSolo || options.workspaceWrite === true;
   binding._networkAccess = isSolo || options.networkAccess === true;
   binding._fullAccess = isSolo || options.fullAccess === true;
+  binding._availableAgents = isSolo ? chatBindings : [];
+  binding._handoffBlockReason = null;
 
   const responseMode = await resolveResponseMode(
     supabase,
@@ -511,17 +622,70 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
   try {
     const response = await invokeAgent(binding);
     if (!response) {
-      console.error("[groupwork] No response from agent.");
+      const errorRecorded = await routeAgentError(
+        supabase,
+        person.id,
+        binding,
+        msg.chat_id,
+        msg.id,
+        binding._lastAgentError ?? "The CLI exited without returning a response. Check the connector terminal and run `node src/cli.js doctor`.",
+      );
+      if (errorRecorded) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
       binding._finishWork?.(false);
       return false;
     }
+
+    if (isSolo) {
+      const { target, ambiguous } = resolveAgentHandoffTarget(response, chatBindings, binding.id);
+      if (ambiguous) {
+        console.warn(`[groupwork] Ignoring ambiguous agent handoff from ${binding.agent_label ?? binding.id}; mention one uniquely named agent.`);
+      } else if (target) {
+        let handoffBlockReason = null;
+        if (handoffChain.includes(target.id)) handoffBlockReason = `${target.agent_label ?? target.id} has already handled this request`;
+
+        if (handoffBlockReason) {
+          console.warn(`[groupwork] Agent handoff blocked: ${handoffBlockReason}.`);
+          binding._handoffBlockReason = handoffBlockReason;
+        } else {
+          const handoff = await sendAgentHandoff(supabase, {
+            chatId: msg.chat_id,
+            sourceBindingId: binding.id,
+            targetBindingId: target.id,
+            body: response,
+            chain: handoffChain,
+          });
+          if (!handoff.ok) {
+            const errorRecorded = await routeAgentError(
+              supabase,
+              person.id,
+              binding,
+              msg.chat_id,
+              msg.id,
+              `Could not hand off this request to ${target.agent_label ?? target.id}: ${handoff.error}. Apply docs/sql/solo-agent-handoffs.sql, then retry with a new mention.`,
+            );
+            if (errorRecorded) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
+            binding._finishWork?.(false);
+            return false;
+          }
+          console.log(`[groupwork] ${binding.agent_label ?? binding.id} handed off message ${handoff.message.id} to ${target.agent_label ?? target.id}; ${handoffChain.length} agent(s) have handled this request.`);
+          markLastSeen(binding.id, mention.created_at ?? msg.created_at);
+          storeContextCursor(binding.id, msg.created_at);
+          binding._finishWork?.(true);
+          return true;
+        }
+      }
+    }
+
+    const finalResponse = binding._handoffBlockReason
+      ? `${response}\n\n[Handoff not run: ${binding._handoffBlockReason}.]`
+      : response;
 
     const routed = await routeResponse(
       supabase,
       person.id,
       binding,
       msg.chat_id,
-      response,
+      finalResponse,
       classification,
       msg.id,
       forceAdvice,
@@ -536,7 +700,10 @@ export async function handleMention(supabase, mention, person, bindingsByChat, e
     binding._finishWork?.(true);
     return true;
   } catch (error) {
-    console.error(`[groupwork] Agent processing failed: ${error.message}`);
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`[groupwork] Agent processing failed for message ${msg.id} using ${AGENT_TYPES[binding.agent_type]?.label ?? binding.agent_type}: ${detail}`);
+    const errorRecorded = await routeAgentError(supabase, person.id, binding, msg.chat_id, msg.id, detail);
+    if (errorRecorded) markLastSeen(binding.id, mention.created_at ?? msg.created_at);
     binding._finishWork?.(false);
     return false;
   }
@@ -622,7 +789,7 @@ export async function start() {
   // fetch ALL bindings for this person across all chats
   const { data: bindings, error: bindingsError } = await supabase
     .from("agent_binding")
-    .select("id, chat_id, agent_type, agent_label, project_path, mode")
+    .select("id, chat_id, agent_type, agent_label, agent_role, agent_description, project_path, mode")
     .eq("person_id", person.id);
 
   if (bindingsError) {
@@ -795,7 +962,7 @@ export async function start() {
       const binding = bindingsById[payload.new.agent_binding_id];
       if (!binding) return;
       console.log(`[groupwork] Explicit mention received for ${binding.agent_label ?? binding.agent_type}: ${payload.new.message_id}`);
-      await enqueueBindingWork(binding.id, () =>
+      await enqueueMentionWork(binding.id, payload.new.message_id, () =>
         handleMention(supabase, payload.new, person, bindingsByChat, binding)
       );
     })
@@ -850,7 +1017,7 @@ export async function start() {
       continue;
     }
     for (const mention of missedAgentMentions ?? []) {
-      await enqueueBindingWork(binding.id, () =>
+      await enqueueMentionWork(binding.id, mention.message_id, () =>
         handleMention(supabase, mention, person, bindingsByChat, binding, true)
       );
     }

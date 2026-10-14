@@ -55,14 +55,20 @@ function saveConnectorAppUrl(appUrl) {
 }
 
 function openBrowser(url) {
-  const os = platform();
-  const command = os === "darwin" ? "open" : os === "win32" ? "cmd" : "xdg-open";
-  const args = os === "win32" ? ["/c", "start", "", url] : [url];
+  const { command, args } = browserLaunchSpec(url);
   const child = spawn(command, args, { detached: true, stdio: "ignore" });
   child.on("error", () => {
     console.log(`[groupwork] Open this URL in your browser:\n${url}`);
   });
   child.unref();
+}
+
+export function browserLaunchSpec(url, os = platform()) {
+  const command = os === "darwin" ? "open" : os === "win32" ? "cmd" : "xdg-open";
+  // cmd.exe treats `&` as a command separator unless the complete URL is
+  // quoted. Authorization URLs carry callback and state query parameters.
+  const args = os === "win32" ? ["/d", "/s", "/c", `start "" "${url}"`] : [url];
+  return { command, args };
 }
 
 export async function getAuthenticatedClient() {

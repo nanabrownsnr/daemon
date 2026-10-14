@@ -13,6 +13,7 @@ type Message = {
   created_at: string;
   was_edited?: boolean;
   agent_binding_id: string | null;
+  agent_handoff_chain?: string[] | null;
   topic_tag: string | null;
 };
 
@@ -38,6 +39,12 @@ const AGENT_TYPE_LABELS: Record<string, string> = {
   claude_code: "Claude Code",
   codex_cli: "Codex CLI",
 };
+
+function mergeMessages(current: Message[], incoming: Message[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
 
 function wordEditDistance(original: string, edited: string) {
   const a = original.trim().split(/\s+/).filter(Boolean);
@@ -86,6 +93,7 @@ export default function ChatMessages({
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const { workingBindings, workingDestinations } = useAgentPresence();
 
   const mentionTargets: MentionTarget[] = isSolo
@@ -109,15 +117,16 @@ export default function ChatMessages({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     supabase
       .from("message")
-      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, topic_tag")
+      .select("id, sender_person_id, sender_type, body, created_at, was_edited, agent_binding_id, agent_handoff_chain, topic_tag")
       .eq("chat_id", chatId)
       .order("created_at", { ascending: true })
-      .then(({ data }) => setMessages(data ?? []));
+      .then(({ data }) => setMessages((previous) => mergeMessages(previous, data ?? [])));
   }, [chatId, supabase]);
 
   useEffect(() => {
@@ -126,7 +135,7 @@ export default function ChatMessages({
       .on("postgres_changes", {
         event: "INSERT", schema: "public", table: "message",
         filter: `chat_id=eq.${chatId}`,
-      }, (payload) => setMessages((prev) => [...prev, payload.new as Message]))
+      }, (payload) => setMessages((prev) => mergeMessages(prev, [payload.new as Message])))
       .on("postgres_changes", {
         event: "UPDATE", schema: "public", table: "message",
         filter: `chat_id=eq.${chatId}`,
@@ -197,7 +206,9 @@ export default function ChatMessages({
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
-    if (!draft.trim()) return;
+    if (!draft.trim() || sendingRef.current) return;
+    sendingRef.current = true;
+    setSendingMessage(true);
     setSendError(null);
 
     const body = draft;
@@ -207,23 +218,31 @@ export default function ChatMessages({
     setMentionedPersonIds([]);
     setMentionedAgentBindingIds([]);
 
-    const { data: msg, error } = await supabase.rpc("send_message_with_mentions", {
-      p_chat_id: chatId,
-      p_body: body,
-      p_person_mentions: personMentions,
-      p_agent_mentions: agentMentions,
-    });
+    try {
+      const { data: msg, error } = await supabase.rpc("send_message_with_mentions", {
+        p_chat_id: chatId,
+        p_body: body,
+        p_person_mentions: personMentions,
+        p_agent_mentions: agentMentions,
+      });
 
-    if (error || !msg) {
+      if (error || !msg) {
+        setDraft(body);
+        setMentionedPersonIds(personMentions);
+        setMentionedAgentBindingIds(agentMentions);
+        setSendError(error?.message ?? "Could not send this message.");
+        return;
+      }
+      setMessages((previous) => mergeMessages(previous, [msg as Message]));
+    } catch (error) {
       setDraft(body);
       setMentionedPersonIds(personMentions);
       setMentionedAgentBindingIds(agentMentions);
-      setSendError(error?.message ?? "Could not send this message.");
-      return;
+      setSendError(error instanceof Error ? error.message : "Could not send this message.");
+    } finally {
+      sendingRef.current = false;
+      setSendingMessage(false);
     }
-    setMessages((previous) => previous.some((message) => message.id === msg.id)
-      ? previous
-      : [...previous, msg as Message]);
 
   }
 
@@ -324,6 +343,11 @@ export default function ChatMessages({
                         ? `Edited by ${personNames[m.sender_person_id] ?? "Unknown"}`
                         : `Sent by ${agentNames[m.agent_binding_id ?? ""] ?? `${personNames[m.sender_person_id] ?? "Unknown"}'s agent`}`}
                     </span>
+                    {!!m.agent_handoff_chain?.length && (
+                      <span className="rounded bg-neutral-700/70 px-1.5 py-0.5 text-[10px] not-italic text-neutral-300">
+                        handoff · {m.agent_handoff_chain.length} agent{m.agent_handoff_chain.length === 1 ? "" : "s"}
+                      </span>
+                    )}
                     {authoredByMe && editingMessageId !== m.id && (
                       <button
                         type="button"
@@ -388,7 +412,11 @@ export default function ChatMessages({
                 {target.label[0].toUpperCase()}
               </span>
               <span>{target.label}</span>
-              <span className="ml-auto text-xs text-neutral-600">{target.kind}</span>
+                <span className="ml-auto text-xs text-neutral-600">
+                  {target.kind === "agent"
+                    ? `agent · ${AGENT_TYPE_LABELS[agentBindings.find((binding) => binding.id === target.id)?.agent_type ?? ""] ?? "local CLI"}`
+                    : "person"}
+                </span>
             </button>
           ))}
           <div className="px-3 py-1.5 border-t border-neutral-800">
@@ -412,6 +440,7 @@ export default function ChatMessages({
           />
           <button
             type="submit"
+            disabled={sendingMessage}
             className="rounded-full bg-neutral-100 text-neutral-900 px-4 py-2 text-sm font-medium hover:bg-white transition-colors"
           >
             Send

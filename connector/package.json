@@ -1,22 +1,33 @@
 {
   "name": "@groupwork/connect",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Local bridge connecting Claude Code or Codex CLI to a groupwork chat",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nanabrownsnr/daemon.git"
+  },
+  "homepage": "https://groupwork-ai.vercel.app/connector",
+  "bugs": {
+    "url": "https://github.com/nanabrownsnr/daemon/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "src",
     "README.md"
   ],
   "bin": {
-    "groupwork-connect": "./src/cli.js"
+    "groupwork-connect": "src/cli.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node src/cli.js start",
     "dev": "node --watch src/cli.js start",
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/connector.test.js",
     "uat:analyze": "node scripts/analyze-judgment-uat.js",
     "prepack": "npm test"
   },

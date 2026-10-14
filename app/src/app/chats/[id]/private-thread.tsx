@@ -15,6 +15,7 @@ type Draft = {
   question_type: string | null;
   trigger_message_id: string | null;
   agent_binding_id: string | null;
+  is_error: boolean;
 };
 
 type AgentBinding = {
@@ -45,6 +46,12 @@ const AGENT_TYPE_LABELS: Record<string, string> = {
   claude_code: "Claude Code",
   codex_cli: "Codex CLI",
 };
+
+function mergeDrafts(current: Draft[], incoming: Draft[]) {
+  const byId = new Map(current.map((draft) => [draft.id, draft]));
+  for (const draft of incoming) byId.set(draft.id, draft);
+  return [...byId.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
 
 export default function PrivateThread({ chatId, personId, agentBindings }: Props) {
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -77,14 +84,14 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
     if (agentBindings.length === 0) return;
     supabase
       .from("private_thread_message")
-      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id, agent_binding_id")
+      .select("id, body, created_at, first_viewed_at, sender_type, topic_tag, question_type, trigger_message_id, agent_binding_id, is_error")
       .eq("chat_id", chatId)
       .eq("person_id", personId)
       .eq("sender_type", "agent")
       .is("resolved_at", null) // only unresolved drafts
       .order("created_at", { ascending: true })
       .then(({ data }) => {
-        setDrafts(data ?? []);
+        setDrafts((previous) => mergeDrafts(previous, data ?? []));
       });
   }, [chatId, personId, bindingKey, agentBindings.length, supabase]);
 
@@ -149,7 +156,20 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
         const msg = payload.new as Draft;
         if (msg.sender_type !== "agent") return;
         if (msg.agent_binding_id && !agentBindings.some((binding) => binding.id === msg.agent_binding_id)) return;
-        setDrafts((prev) => [...prev, msg]);
+        setDrafts((prev) => mergeDrafts(prev, [msg]));
+      })
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "private_thread_message",
+        filter: `chat_id=eq.${chatId}`,
+      }, (payload) => {
+        const msg = payload.new as Draft & { resolved_at?: string | null };
+        if (msg.resolved_at) {
+          setDrafts((prev) => prev.filter((draft) => draft.id !== msg.id));
+          return;
+        }
+        setDrafts((prev) => mergeDrafts(prev, [msg]));
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -313,6 +333,21 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
     setLoading(null);
   }
 
+  async function dismissError(draft: Draft) {
+    setLoading(draft.id);
+    const { error } = await supabase
+      .from("private_thread_message")
+      .update({ resolved_at: new Date().toISOString() })
+      .eq("id", draft.id);
+    if (error) {
+      setRequestError(`Could not dismiss connector error: ${error.message}`);
+      setLoading(null);
+      return;
+    }
+    removeDraft(draft.id);
+    setLoading(null);
+  }
+
   async function handleHandleMyself(draft: Draft) {
     setLoading(draft.id);
     await recordEvent(draft, "handled_manually");
@@ -348,7 +383,8 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
                 onClick={() => setSelectedBindingId(binding.id)}
                 className={`rounded px-2 py-1 text-xs transition-colors ${activeBindingId === binding.id ? "bg-neutral-700 text-neutral-100" : "text-neutral-500 hover:text-neutral-300"}`}
               >
-                {binding.agent_label ?? AGENT_TYPE_LABELS[binding.agent_type] ?? binding.agent_type}
+                {binding.agent_label ?? binding.agent_type}
+                <span className="ml-1 text-neutral-500">· {AGENT_TYPE_LABELS[binding.agent_type] ?? binding.agent_type}</span>
                 {count > 0 && <span className="ml-1 text-neutral-400">{count}</span>}
               </button>
             );
@@ -431,8 +467,13 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
         {visibleDrafts.map((draft) => (
           <div
             key={draft.id}
-            className="rounded border border-neutral-700 bg-neutral-900 p-3 space-y-2"
+            className={`rounded border p-3 space-y-2 ${draft.is_error ? "border-red-900/70 bg-red-950/20" : "border-neutral-700 bg-neutral-900"}`}
           >
+            {draft.is_error && (
+              <p className="text-xs font-medium text-red-300">
+                Connector error · {AGENT_TYPE_LABELS[agentBindings.find((binding) => binding.id === draft.agent_binding_id)?.agent_type ?? ""] ?? "Agent"}
+              </p>
+            )}
             {editingId === draft.id ? (
               <textarea
                 value={editBody}
@@ -447,7 +488,19 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
               </div>
             )}
 
-            <div className="flex gap-2 flex-wrap">
+            {draft.is_error ? (
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-red-200/70">This mention was not processed. Fix the connector issue, then send a new mention to retry.</p>
+                <button
+                  type="button"
+                  onClick={() => void dismissError(draft)}
+                  disabled={loading === draft.id}
+                  className="shrink-0 text-xs text-neutral-500 hover:text-neutral-300 disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : <div className="flex gap-2 flex-wrap">
               {editingId === draft.id ? (
                 <>
                   <button
@@ -496,7 +549,7 @@ export default function PrivateThread({ chatId, personId, agentBindings }: Props
                   </button>
                 </>
               )}
-            </div>
+            </div>}
           </div>
         ))}
       </div>

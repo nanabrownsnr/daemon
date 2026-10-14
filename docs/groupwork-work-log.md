@@ -23,7 +23,8 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 - **Team is the core product:** a human brings one project-bound agent into a
   team conversation; other people request its help through that human.
 - **Solo is a proving workspace:** one human may coordinate multiple named
-  agents, but agents do not autonomously trigger one another.
+  agents. A human-started request may include an explicit handoff to one named
+  peer, with loop prevention so each agent handles a request at most once.
 - **Execution and publication are separate:** Team work requires owner Accept
   before reaching the local runtime; Advice/Act/Judgment determines whether the
   resulting response needs review before entering the shared chat.
@@ -51,8 +52,9 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Connector: mention detection + invocation | ✅ End-to-end real API-key test complete: mention received → prompt built → Claude Code invoked → response routed. |
 | Per-binding catch-up cursor | Startup catch-up fetches only mentions not successfully processed by that exact binding. One agent cannot advance another agent's cursor. |
 | Presence indicator | ✅ Green/grey status per binding using Supabase Presence and connector heartbeats. Expected disconnect delay is approximately 30–60 seconds. |
-| Connector regression tests | Twenty-four fast Node tests cover deterministic and local semantic classification, highest-score ordering, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, per-binding execution serialization, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex continuity. Keep these running during MVP development. |
+| Connector regression tests | Thirty-one fast Node tests cover deterministic and local semantic classification, highest-score ordering, single-flight/non-blocking model warm-up, catalog versioning/evidence, layered summary/recent-context prompts, Team/Solo routing, Solo peer-directory prompts, explicit handoff routing, per-binding execution serialization, duplicate-delivery suppression, permission boundaries, Advice/Act/Judgment, safe fallbacks, pause/resume, catch-up safety, trust-event semantics, and Claude/Codex continuity. Keep these running during MVP development. |
 | Per-binding execution queue | ✅ Invocations for one binding are serialized so a second mention cannot concurrently resume the same Claude/Codex session. Different bindings remain concurrent. |
+| Duplicate delivery and visible connector errors | Realtime/fetch/local chat state merges by database row ID, preventing one message from rendering twice. Connector mention events are deduplicated against startup catch-up, and SQL resolves legacy duplicate open drafts before enforcing one response per mention. CLI failures appear as non-sendable error cards in the matching Agent Workspace. SQL: `docs/sql/connector-workspace-errors.sql`. |
 | Atomic message + mention delivery | ✅ `send_message_with_mentions` validates chat membership and Team/Solo targets, then stores the human message and all structured mentions in one transaction. SQL: `docs/sql/send-message-atomic.sql`. |
 | Chat GitHub project context | ✅ Chat owners can attach a validated GitHub repository URL. The link is visible in the chat header and included in every connector prompt with an explicit reminder that local credentials still control pull/push access. SQL: `docs/sql/chat-github-link.sql`. |
 | Cross-platform CLI launch diagnostics | ✅ Windows `.cmd` executable resolution is used for Claude Code and Codex CLI, and `doctor` checks the platform-specific executable. Missing CLI errors now identify the exact CLI to install instead of only reporting `ENOENT`. |
@@ -62,11 +64,11 @@ The unit of work is shifting from person → person+agent. The unsolved bottlene
 | Platform-owned running chat summary | ✅ A Supabase Database Webhook wakes the `summarize-chat` Edge Function after message inserts. The first summary waits for two distinct speakers; subsequent messages refresh it incrementally. PostgreSQL atomically claims each block, and an independent OpenRouter model produces shared goal/decision/state/task/handoff context. Connectors only read the stored summary plus their raw delta. Failures never block chat or agent work. SQL: `docs/sql/chat-context-summary.sql`; setup: `docs/platform-chat-summaries.md`. |
 | Owner execution gate | ✅ Team mentions create pending Agent Workspace requests and do not reach the connector until the agent owner chooses **Accept** or **Reject**. Accept explicitly grants the local runtime terminal-equivalent host permissions for that request; requests are atomically claimed once. Execution and publication remain separate controls. SQL: `docs/sql/team-run-approval.sql`. |
 | Solo execution permissions | ✅ Explicit Solo mentions authorize native-style full local execution for Claude/Codex: files, commands, validation, host processes and ports across invocations, and network access. This deliberately bypasses the Codex sandbox and Claude permission prompts on the connector computer; the binding UI requires an explicit acknowledgement. |
-| Solo multi-agent workspace | ✅ Live Claude/Codex UAT complete: persistent labeled bindings, agent-only `@` targeting, independent sessions/project paths/modes/presence, binding-specific prompts, and per-agent Agent Workspace tabs. Autonomous agent-to-agent triggering is deliberately excluded. |
+| Solo multi-agent workspace | ✅ Live Claude/Codex UAT complete: persistent labeled bindings, agent-only `@` targeting, independent sessions/project paths/modes/presence, binding-specific prompts, and per-agent Agent Workspace tabs. Solo agent names, roles and descriptions are editable and supplied as a separate directory in each agent prompt. Explicit `@label` handoffs cannot revisit an agent; apply `docs/sql/solo-agent-profiles.sql` and `docs/sql/solo-agent-handoffs.sql`. |
 | Codex CLI adapter | ✅ On first mention, resumes the most recent Codex session scoped to the binding's project directory; if none exists, creates one. The resulting JSONL `thread_id` is persisted per binding and resumed exactly. Solo and accepted Team work use native-style full local access. Completed JSONL turns return immediately even when a detached server keeps inherited streams open. |
 | Codex sandbox compatibility | ✅ Read-only adapter calls retain the Codex sandbox. Authorized Solo and accepted Team work deliberately use the runtime's native full-access automation mode, matching the execution consent shown in the UI. |
 | Connector browser authorization | ✅ `groupwork-connect login` opens the signed-in web app for explicit loopback authorization. The connector stores refreshable session tokens with `0600` permissions and never receives or stores the user's password. Logout removes the local session. |
-| Connector private-beta package | ✅ Runtime-only npm tarball created and installed successfully in an isolated prefix. The canonical `groupwork-connect` CLI and website `/connector` download/setup instructions are ready. Connector 0.7.2 adds idle zero-binding startup to the 0.7.1 feature set. Public npm publication remains optional and gated on a deployed app URL plus second physical-machine UAT. |
+| Connector package and distribution | ✅ Connector 0.7.2 tarball passed isolated install UAT. Version 0.7.3 is prepared as the public `@groupwork/connect` package with one global npm install command across Windows, macOS, and Linux; first npm publish and the package's npm scope ownership remain to be completed. Future tagged GitHub releases publish through the trusted-publishing workflow. |
 | Connector doctor | ✅ Checks saved login, Supabase identity, required topic-catalog schema/version, bindings, Claude/Codex installation, local project paths, and website reachability before start. |
 | Zero-binding idle startup | ✅ The connector remains connected with no bindings, listens for live binding inserts, and activates agents added later from the web UI without a terminal restart. |
 | Sent-agent-message correction | Owners can edit a response their agent already posted. The corrected text is visible to the chat, marked `Edited by [owner]`, and the first edit records `corrected_after_send` with topic and word-level edit distance so Judgment demotes that topic. |
@@ -112,7 +114,7 @@ production risk.
 
 Feature scope is frozen for this gate. Pairwise trust, learned inbound approval,
 shared artifacts, organizations/billing, desktop packaging, push notifications,
-and autonomous agent loops remain post-MVP.
+and cyclic agent-to-agent handoffs remain out of scope.
 
 ## Product Backlog (ordered by value)
 
@@ -154,13 +156,13 @@ and autonomous agent loops remain post-MVP.
 | 17 | **Push notifications** | In-app badge when in a different chat; OS-level push when app is closed. Same delivery system should serve human messages AND agent events. |
 | 18 | **Soft-delete / deactivate person** | Currently deleting a Supabase auth user orphans the `person` row. Should deactivate rather than hard-delete (judgment history is a long-term asset). |
 | 19 | **Email confirmation re-enable** | Currently disabled for dev. Must re-enable before any external users. |
-| 20 | **Agent-to-agent loop circuit breaker** | Once auto-triggering exists beyond explicit mention, need a max-hop-count or "agents can't mention each other without a human-initiated thread" rule. |
+| 20 | ✅ **Agent-to-agent loop circuit breaker** | Solo handoffs must stem from a human-started request, cannot revisit an agent. Connector and database both enforce the loop check; chain length is limited only by the number of distinct agents in the Solo chat. |
 | 21 | **Desktop app / native file picker** | For smoother connector onboarding (select folder, pick agent type, done). Deferred until loop is proven. |
 | 22 | ✅ **Second agent adapter: Codex CLI** | Codex CLI now shares the connector, prompt, routing, session persistence, presence, and Judgment pipeline with Claude Code. Goose, Hermes, Ollama, and others remain future adapter work. |
-| 23 | ✅ **Solo multi-agent chats** | Human-directed Claude/Codex UAT passed with explicit mentions, separate workspaces and persistent sessions. Autonomous agent-to-agent triggering remains deferred. |
+| 23 | ✅ **Solo multi-agent chats** | Human-directed Claude/Codex UAT passed with explicit mentions, separate workspaces and persistent sessions. Editable name, role and description profiles guide each agent to the best-fit peer; explicit `@label` handoffs continue a human-started request without revisiting agents. |
 | 24 | **UI redesign** | Current UI is functional but unstyled. Redesign is a pure CSS/className change — no logic touch — estimated 1-2 days with a clear design direction. |
 | 25 | ✅ **Canonical groupwork identity** | Product copy, package identity, CLI, logs, configuration, storage keys and documentation now use groupwork. Connector 0.5.0 migrates existing `~/.daemon` state to `~/.groupwork`; legacy environment names are temporary compatibility fallbacks only. |
-| 26 | **Shared chat artifacts / agent handoffs** | Deferred until after the MVP and Codex/Claude cross-platform UAT. Eventually share focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—while GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; consider MCP later. |
+| 26 | **Shared chat artifacts** | Deferred until after the MVP and Codex/Claude cross-platform UAT. Eventually share focused handoff artifacts—Markdown plans, API contracts, logs, test reports, screenshots or sample payloads—while GitHub remains the source of truth for code. Start with Supabase Storage + connector delivery; consider MCP later. |
 
 ---
 
@@ -190,6 +192,19 @@ and autonomous agent loops remain post-MVP.
 | Browser approval instead of connector passwords | Distribution must never require copying a groupwork password into `.env`. A short-lived loopback authorization transfers the existing browser session to the explicitly approved local CLI and stores it with restricted permissions. |
 
 ## Session Notes — Post-restore fixes
+
+- **Windows connector compatibility (2026-10-13):** latest Codex on Windows is
+  exposed as `codex.exe` alongside the npm `codex.cmd` shim. The connector now
+  invokes the native executable, avoiding direct `.cmd` spawning. `doctor` now
+  checks the same executable and rejects Node versions below 22; this machine's
+  Node 18.20.8 could not initialize Supabase's native WebSocket. Added a CI
+  matrix for Node 22/24 on Windows, macOS, and Linux.
+- **npm distribution preparation (2026-10-13):** prepared connector 0.7.3 as a
+  public `@groupwork/connect` package, changed `/connector` to the same global
+  npm install command on Windows/macOS/Linux, and added a GitHub Release
+  workflow using npm trusted publishing. First npm publication still needs an
+  authenticated maintainer bootstrap because npm trust requires an existing
+  package.
 
 - ✅ **Final pre-UAT audit (2026-08-24):** all 23 connector tests, app lint,
   TypeScript, and the production Webpack build pass. Connector 0.7.1 installs
@@ -271,7 +286,7 @@ and autonomous agent loops remain post-MVP.
   use, then pin its ID. Test what happens if the developer is actively using
   that same session while groupwork invokes it; define locking or a clear UI
   warning if either CLI cannot safely serialize access.
-- **Agent-to-agent loop prevention** — needed once any auto-triggering beyond explicit mention exists
+- **Agent-to-agent loop prevention** — covered by repeated-agent checks and finite per-chat agent identities; validate on each supported connector platform.
 - **Topic continuity and catalog quality** — connector 0.7.1 now uses a local
   MiniLM embedding model with a deterministic non-blocking fallback. UAT should
   measure follow-up-message classification, false topic switches, confidence,

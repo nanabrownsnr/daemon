@@ -1,10 +1,16 @@
 import { spawnSync } from "child_process";
 import { existsSync } from "fs";
 import { getAuthenticatedClient, getConnectorAppUrl, hasSavedLogin } from "./auth.js";
+import { agentExecutable, isSupportedNodeVersion } from "./platform.js";
 
 function commandVersion(command) {
-  const executable = process.platform === "win32" ? `${command}.cmd` : command;
-  const result = spawnSync(executable, ["--version"], { encoding: "utf8" });
+  const executable = agentExecutable(command);
+  const result = spawnSync(executable, ["--version"], {
+    encoding: "utf8",
+    // Claude Code's Windows CLI is a .cmd shim. Only the fixed --version
+    // argument is passed through cmd.exe here; agent prompts never use a shell.
+    shell: process.platform === "win32" && executable.endsWith(".cmd"),
+  });
   if (result.error || result.status !== 0) return null;
   return (result.stdout || result.stderr).trim().split("\n")[0];
 }
@@ -17,7 +23,12 @@ function report(ok, message) {
 export async function doctor() {
   console.log("groupwork connector doctor\n");
   const results = [];
-  results.push(report(Boolean(process.versions.node), `Node.js ${process.versions.node}`));
+  results.push(report(
+    isSupportedNodeVersion(process.versions.node),
+    isSupportedNodeVersion(process.versions.node)
+      ? `Node.js ${process.versions.node}`
+      : `Node.js ${process.versions.node} is unsupported; install Node.js 22 or newer`,
+  ));
   results.push(report(hasSavedLogin(), "Saved groupwork login"));
 
   let bindings = [];

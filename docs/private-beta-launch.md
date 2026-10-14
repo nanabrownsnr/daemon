@@ -35,6 +35,9 @@ Apply the current runbooks before deploying the matching app and connector:
 5. `docs/sql/chat-context-summary.sql`
 6. `docs/sql/topic-classification.sql`
 7. `docs/sql/chat-github-link.sql`
+8. `docs/sql/connector-workspace-errors.sql`
+9. `docs/sql/solo-agent-profiles.sql`
+10. `docs/sql/solo-agent-handoffs.sql`
 
 Re-running these current runbooks is intended to be safe, but use the existing
 private-beta project and review SQL errors rather than skipping a failed step.
@@ -45,8 +48,10 @@ private-beta project and review SQL errors rather than skipping a failed step.
    Install the CLI inside the same Linux, WSL, Git Bash, or macOS environment
    where `groupwork-connect` will run; installing a desktop/web app is not
    sufficient.
-2. Download connector 0.7.2 from `/connector` and install it from the download
-   directory. Use `sudo` only if npm reports `EACCES` under `/usr/local`.
+2. Install the connector from `/connector` with `npm install -g
+   @groupwork/connect`. The same command works in PowerShell, macOS Terminal,
+   and Linux shells. Use Node.js 22 or newer; a user-owned Node install such as
+   nvm avoids global npm permissions errors.
 3. Run `groupwork-connect login --app-url https://groupwork-ai.vercel.app`.
 4. Add a binding in groupwork, then run `groupwork-connect doctor` and
    `groupwork-connect start`. Doctor must report a topic catalog version before
@@ -60,7 +65,10 @@ private-beta project and review SQL errors rather than skipping a failed step.
 7. In a Solo chat, target Claude and Codex separately and together; verify each
    retains its own project, session, response, and presence state.
    Verify each working agent shows a three-dot conversation indicator and then
-   publishes exactly one complete response.
+   publishes exactly one complete response. In a Solo chat, edit each agent's
+   name, role and description; verify updates reach its peers' separate agent
+   directory prompts. Verify an agent can hand off with one exact `@label`,
+   and a repeated agent is blocked without an arbitrary chain-length limit.
 8. Stop and restart the connector, then verify catch-up is routed through
    Advice and processed only once.
 9. Run pause, resume, and logout once.

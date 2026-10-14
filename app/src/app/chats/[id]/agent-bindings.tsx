@@ -3,18 +3,23 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAgentPresence } from "./agent-presence";
+import AgentModal, { type AgentProfile } from "./agent-modal";
 
 type AgentBinding = {
   id: string;
   person_id: string;
   agent_type: string;
   agent_label: string | null;
+  agent_role: string | null;
+  agent_description: string | null;
+  project_path: string | null;
   mode: string;
 };
 
 type Props = {
   chatId: string;
   personId: string;
+  isSolo: boolean;
 };
 
 const AGENT_TYPE_LABELS: Record<string, string> = {
@@ -22,7 +27,7 @@ const AGENT_TYPE_LABELS: Record<string, string> = {
   codex_cli: "Codex CLI",
 };
 
-export default function AgentBindings({ chatId, personId }: Props) {
+export default function AgentBindings({ chatId, personId, isSolo }: Props) {
   const [bindings, setBindings] = useState<AgentBinding[]>([]);
   const [loading, setLoading] = useState<string | null>(null);
   const { onlineBindings } = useAgentPresence();
@@ -34,7 +39,7 @@ export default function AgentBindings({ chatId, personId }: Props) {
   useEffect(() => {
     supabase
       .from("agent_binding")
-      .select("id, person_id, agent_type, agent_label, mode")
+      .select("id, person_id, agent_type, agent_label, agent_role, agent_description, project_path, mode")
       .eq("chat_id", chatId)
       .then(({ data }) => setBindings(data ?? []));
   }, [chatId, supabase]);
@@ -115,8 +120,11 @@ export default function AgentBindings({ chatId, personId }: Props) {
 
             {/* name */}
             <span className="text-neutral-300 truncate flex-1 min-w-0">
-              {b.agent_label ?? AGENT_TYPE_LABELS[b.agent_type] ?? b.agent_type}
-              {isMe && <span className="text-neutral-600 ml-1 text-xs">you</span>}
+              <span title={[b.agent_role, b.agent_description].filter(Boolean).join("\n\n")}>
+                {b.agent_label ?? AGENT_TYPE_LABELS[b.agent_type] ?? b.agent_type}
+                {isMe && <span className="text-neutral-600 ml-1 text-xs">you</span>}
+              </span>
+              {b.agent_role && <span className="block truncate text-[10px] text-neutral-600">{b.agent_role}</span>}
             </span>
 
             {/* Advice/Act are manual pins; Judgment delegates the per-topic
@@ -137,6 +145,14 @@ export default function AgentBindings({ chatId, personId }: Props) {
               </div>
             )}
 
+            {isMe && (
+              <AgentModal
+                chatId={chatId}
+                personId={personId}
+                isSolo={isSolo}
+                binding={b as AgentProfile}
+              />
+            )}
 
             {/* remove — only for own binding */}
             {isMe && (
